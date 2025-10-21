@@ -1,6 +1,7 @@
 # OLD:
 # FROM python:3.11-slim
-FROM tensorflow/tensorflow:2.16.1-py3
+# Corrected FROM instruction
+FROM tensorflow/tensorflow:2.16.1
 
 WORKDIR /app
 COPY requirements.txt .
