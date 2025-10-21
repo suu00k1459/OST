@@ -2,6 +2,9 @@
 
 ![FLEAD architecture](/Architecture%20Diagrams/diagram4.jpg)
 
+
+
+## Data Set Link : **https://www.kaggle.com/datasets/sibasispradhan/edge-iiotset-dataset**
 ## Team Assignments
 
 ### **SU YOUNG & ROBERT**
