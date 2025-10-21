@@ -1,0 +1,93 @@
+version: "3.9"
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on: [zookeeper]
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  timescaledb:
+    image: timescale/timescaledb-ha:pg16
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: flead
+      POSTGRES_USER: flead
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./sql/timescale_init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+
+  server:
+    build:
+      context: .
+      dockerfile: services/server/Dockerfile
+    depends_on: [kafka, timescaledb]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      TOPIC_UPDATES: model_updates
+      TOPIC_GLOBAL: global_model
+      DB_DSN: postgresql://flead:password@timescaledb:5432/flead
+    ports:
+      - "8080:8080"
+
+  client1:
+    build:
+      context: .
+      dockerfile: services/client/Dockerfile
+    depends_on: [kafka, server]
+    environment:
+      CLIENT_ID: client1
+      KAFKA_BOOTSTRAP: kafka:9092
+      TOPIC_DATA: edge_data_client1
+      SERVER_ADDR: server:8080
+      TASK_MODE: binary       
+
+  client2:
+    build:
+      context: .
+      dockerfile: services/client/Dockerfile
+    depends_on: [kafka, server]
+    environment:
+      CLIENT_ID: client2
+      KAFKA_BOOTSTRAP: kafka:9092
+      TOPIC_DATA: edge_data_client2
+      SERVER_ADDR: server:8080
+      TASK_MODE: binary
+
+  producer:
+    build:
+      context: .
+      dockerfile: services/producer/Dockerfile
+    depends_on: [kafka]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      TOPICS: edge_data_client1,edge_data_client2
+      CSV_PATH: /data/DNN-EdgeIIoT-dataset.csv
+    volumes:
+      - ./data:/data
