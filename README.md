@@ -1,8 +1,6 @@
 # Open source technologies for data science project
 
-
 ![FLEAD architecture](/project_architecture.png)
-
 
 ## Team Assignments
 
@@ -38,9 +36,9 @@
 
 ---
 
-##  Installation
+## Installation
 
-### 
+###
 
 1. **Install Python Dependencies**
 
@@ -49,10 +47,10 @@
     pip install -r requirements.txt
     ```
 
-2. **Start MongoDB** 
+2. **Start TimescaleDB**
 
     ```bash
-    docker run -d --name mongodb_simple -p 27017:27017 mongo:latest
+    docker run -d --name timescaledb -p 5432:5432 -e POSTGRES_PASSWORD=postgres timescale/timescaledb:latest-pg15
     ```
 
 3. **Run Complete Pipeline**
@@ -77,8 +75,8 @@
 4. Federated Aggregation
    └─> creates global model in models/global/
 
-5. Analytics (requires MongoDB)
-   └─> stores in MongoDB + generates report
+5. Analytics (requires TimescaleDB)
+   └─> stores in TimescaleDB + generates report
 
 6. Visualization
    └─> creates dashboard PNG
@@ -88,10 +86,10 @@
 
 ## Run the project
 
-1. Ensure MongoDB is running:
+1. Ensure TimescaleDB is running:
 
     ```bash
-    docker ps | findstr mongodb_simple
+    docker ps | findstr timescaledb
     ```
 
 2. Run complete pipeline:
@@ -113,8 +111,8 @@ STOP_ALL.bat
 ### Stop MongoDb Manualy
 
 ```bash
-docker stop mongodb_simple
-docker rm mongodb_simple
+docker stop timescaledb
+docker rm timescaledb
 ```
 
 ### Clean Generated Files

@@ -19,18 +19,18 @@ echo [OK] Docker is running
 
 echo.
 echo [2/3] Installing Python packages...
-pip install --quiet numpy pandas scikit-learn matplotlib pymongo
+pip install --quiet numpy pandas scikit-learn matplotlib psycopg2-binary
 echo [OK] Packages installed
 
 echo.
-echo [3/3] Starting MongoDB...
-docker ps | findstr mongodb >nul 2>&1
+echo [3/3] Starting TimescaleDB...
+docker ps | findstr timescaledb >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo Starting MongoDB container...
-    docker run -d -p 27017:27017 --name mongodb mongo:latest
+    echo Starting TimescaleDB container...
+    docker run -d -p 5432:5432 --name timescaledb -e POSTGRES_PASSWORD=postgres timescale/timescaledb:latest-pg15
     timeout /t 5 /nobreak >nul
 )
-echo [OK] MongoDB ready
+echo [OK] TimescaleDB ready
 
 echo.
 echo ========================================

@@ -43,7 +43,7 @@ echo SETUP COMPLETE!
 echo ========================================
 echo.
 echo Next steps:
-echo 1. Start MongoDB: docker run -d --name mongodb_simple -p 27017:27017 mongo:latest
+echo 1. Start TimescaleDB: docker run -d --name timescaledb -p 5432:5432 -e POSTGRES_PASSWORD=postgres timescale/timescaledb:latest-pg15
 echo 2. Test individual components: cd tests ^& 1_TEST_DATA.bat
 echo 3. Run complete pipeline: RUN_ALL.bat
 echo.

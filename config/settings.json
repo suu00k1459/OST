@@ -15,9 +15,11 @@
         "strategy": "fedavg",
         "min_devices": 3
     },
-    "mongodb": {
+    "timescaledb": {
         "host": "localhost",
-        "port": 27017,
-        "database": "iot_simple"
+        "port": 5432,
+        "database": "iot_timescale",
+        "user": "postgres",
+        "password": "postgres"
     }
 }

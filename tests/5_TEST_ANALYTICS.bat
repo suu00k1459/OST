@@ -7,16 +7,16 @@ echo.
 
 cd /d "%~dp0..\scripts"
 
-echo Checking MongoDB...
-docker ps -q -f name=mongodb_simple >nul 2>&1
+echo Checking TimescaleDB...
+docker ps -q -f name=timescaledb >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] MongoDB container not running!
-    echo Please start MongoDB first: docker run -d --name mongodb_simple -p 27017:27017 mongo:latest
+    echo [ERROR] TimescaleDB container not running!
+    echo Please start TimescaleDB first: docker run -d --name timescaledb -p 5432:5432 -e POSTGRES_PASSWORD=postgres timescale/timescaledb:latest-pg15
     pause
     exit /b 1
 )
 
-echo MongoDB is running...
+echo TimescaleDB is running...
 echo.
 
 python 4_analytics.py

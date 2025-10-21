@@ -4,20 +4,20 @@ echo STOP SIMPLIFIED PIPELINE
 echo ========================================
 echo.
 
-echo Stopping MongoDB container...
-docker stop mongodb_simple 2>nul
+echo Stopping TimescaleDB container...
+docker stop timescaledb 2>nul
 if %ERRORLEVEL% EQU 0 (
-    echo [SUCCESS] MongoDB stopped
+    echo [SUCCESS] TimescaleDB stopped
 ) else (
-    echo MongoDB was not running
+    echo TimescaleDB was not running
 )
 
-echo Removing MongoDB container...
-docker rm mongodb_simple 2>nul
+echo Removing TimescaleDB container...
+docker rm timescaledb 2>nul
 if %ERRORLEVEL% EQU 0 (
-    echo [SUCCESS] MongoDB container removed
+    echo [SUCCESS] TimescaleDB container removed
 ) else (
-    echo MongoDB container was not found
+    echo TimescaleDB container was not found
 )
 
 echo.

@@ -7,22 +7,22 @@ echo.
 
 cd /d "%~dp0scripts"
 
-echo [STEP 1/6] Starting MongoDB...
+echo [STEP 1/6] Starting TimescaleDB...
 echo ----------------------------------------
-docker ps -q -f name=mongodb_simple >nul 2>&1
+docker ps -q -f name=timescaledb >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
-    echo MongoDB already running
+    echo TimescaleDB already running
 ) else (
-    docker run -d --name mongodb_simple -p 27017:27017 mongo:latest
+    docker run -d --name timescaledb -p 5432:5432 -e POSTGRES_PASSWORD=postgres timescale/timescaledb:latest-pg15
     if %ERRORLEVEL% NEQ 0 (
-        echo [ERROR] Failed to start MongoDB!
+        echo [ERROR] Failed to start TimescaleDB!
         pause
         exit /b 1
     )
-    echo Waiting for MongoDB to initialize...
-    timeout /t 5 /nobreak >nul
+    echo Waiting for TimescaleDB to initialize...
+    timeout /t 10 /nobreak >nul
 )
-echo [SUCCESS] MongoDB ready
+echo [SUCCESS] TimescaleDB ready
 echo.
 
 echo [STEP 2/6] Data Ingestion...
@@ -82,6 +82,6 @@ echo.
 echo Next steps:
 echo 1. Run visualization: python 5_visualization.py
 echo 2. Check outputs in: outputs/
-echo 3. View MongoDB data: Use MongoDB Compass at mongodb://localhost:27017
+echo 3. View TimescaleDB data: Use pgAdmin or psql at localhost:5432
 echo.
 pause
