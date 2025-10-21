@@ -1,6 +1,6 @@
 # Open source technologies for data science project
 
-![FLEAD architecture](/project_architecture.png)
+![FLEAD architecture](/Architecture%20Diagrams/diagram4.jpg)
 
 ## Team Assignments
 
