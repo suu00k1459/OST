@@ -4,38 +4,13 @@
 
 
 
-## Data Set Link : **https://www.kaggle.com/datasets/sibasispradhan/edge-iiotset-dataset**
-## Team Assignments
+## Data Set Link : 
+**https://www.kaggle.com/datasets/sibasispradhan/edge-iiotset-dataset**
 
-### **SU YOUNG & ROBERT**
 
--   **Components**: Data Ingestion + Preprocessing + Analytics
--   **Scripts**:
-    -   `scripts/1_data_ingestion.py`
-    -   `scripts/1_preprocessing.py`
-    -   `scripts/4_analytics.py`
--   **Tests**:
-    -   `tests/1_TEST_DATA.bat`
-    -   `tests/2_TEST_PREPROCESSING.bat`
-    -   `tests/5_TEST_ANALYTICS.bat`
+## Data set preprocessing :
+**https://www.kaggle.com/code/imedbenmadi/notebookf27d2cfbac**
 
-### **IMED & AMIR**
-
--   **Components**: Local Training + Federated Aggregation
--   **Scripts**:
-    -   `scripts/2_local_training.py`
-    -   `scripts/3_aggregation.py`
--   **Tests**:
-    -   `tests/3_TEST_TRAINING.bat`
-    -   `tests/4_TEST_AGGREGATION.bat`
-
-### **YUSIF & AMIR**
-
--   **Components**: Visualization + Dashboard
--   **Scripts**:
-    -   `scripts/5_visualization.py`
--   **Tests**:
-    -   `tests/6_TEST_VISUALIZATION.bat`
 
 ---
 

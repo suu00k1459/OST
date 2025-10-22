@@ -2,3 +2,22 @@ ARCHITECTURE.md
 4_analytics_copy.py
 MIGRATION_GUIDE.md
 TIMESCALEDB_QUICK_REFERENCE.md
+kaggle.json
+.env
+edge_iiot_data
+edge_iiot_processed
+.ipynb_checkpoints
+
+KAFKA_COMMANDS.MD
+KAFKA MD FILES
+Feederated Learning Md files
+
+mdfiles
+batch_scripts
+
+app.py
+device_simulator.py
+fed_learning_utils.py
+FLEAD_offline_simulation.ipynb
+
+templates
