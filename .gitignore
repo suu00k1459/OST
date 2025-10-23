@@ -21,3 +21,7 @@ fed_learning_utils.py
 FLEAD_offline_simulation.ipynb
 
 templates
+
+# Ignore large datasets
+data/*.csv
+data/*.zip
