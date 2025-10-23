@@ -1,133 +1,176 @@
-# Final version using the official apache/spark image to resolve network pull errors.
+# This is the main blueprint for our entire application. Docker Compose reads this file
+# to start, stop, and connect all the services (containers) needed for the project.
+
+# 'services' is the main section where we define each individual component of our system.
 services:
+
   # -------------------------------------------
-  # Core Infrastructure
+  # Core Infrastructure: The foundational services that everything else relies on.
   # -------------------------------------------
+
+  # Zookeeper is a manager for Kafka. It keeps track of which brokers are online and stores configuration.
   zookeeper:
+    # 'image' tells Docker what software to run. Here, it's Confluent's Zookeeper, version 7.6.1.
     image: confluentinc/cp-zookeeper:7.6.1
+    # 'container_name' gives the container a fixed, easy-to-read name in Docker Desktop.
     container_name: zookeeper
+    # 'environment' sets configuration variables inside the container.
     environment:
+      # This tells Zookeeper which port it should listen on for client connections.
       ZOOKEEPER_CLIENT_PORT: 2181
+    # 'ports' exposes a container's port to your host machine (your laptop).
+    # Format is "HOST_PORT:CONTAINER_PORT". This lets tools on your laptop talk to Zookeeper if needed.
     ports:
       - "2181:2181"
+    # 'volumes' makes data persistent. Data saved here will survive if the container is restarted.
     volumes:
+      # These "named volumes" are managed by Docker and are the best way to store important data.
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
+    # 'networks' tells this service to join our custom, reliable network.
+    networks: [flead_network]
 
+  # Kafka is the message bus or "central post office" of our system. Data flows through it.
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: kafka
+    # 'depends_on' tells Docker to start the 'zookeeper' container before starting this one.
     depends_on: [zookeeper]
     ports:
+      # Exposes the external port for tools on your laptop (like a UI) to connect.
       - "9092:9092"
+      # WORKAROUND: Exposes the internal port (29092) to your laptop. This is required for our
+      # 'host.docker.internal' networking fix to work.
+      - "29092:29092"
     environment:
+      # A unique ID for this Kafka broker in the cluster.
       KAFKA_BROKER_ID: 1
+      # The address of the Zookeeper manager that this Kafka broker should report to.
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # WORKAROUND: These three lines are the core of our networking fix.
+      # KAFKA_LISTENERS tells Kafka which network interfaces to "listen" on inside its container.
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      # KAFKA_ADVERTISED_LISTENERS is the "address" Kafka gives out to clients that connect.
+      # It tells other containers to connect via 'host.docker.internal', bypassing Docker's buggy internal DNS.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://host.docker.internal:29092,PLAINTEXT_HOST://localhost:9092
+      # Maps our listener names to a security protocol (in this case, none).
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # Tells brokers how to talk to each other (using the internal listener).
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Standard Kafka setting required for single-broker setups.
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     volumes:
+      # Persists all Kafka message data.
       - kafka_data:/var/lib/kafka/data
+    networks: [flead_network]
 
   # -------------------------------------------
-  # Flink Cluster
+  # Flink & Spark: The data processing engines. They are currently idle, waiting for jobs.
   # -------------------------------------------
   flink-jobmanager:
     image: apache/flink:1.17-scala_2.12
     container_name: flink-jobmanager
     ports:
-      - "8081:8081" # Flink UI
+      - "8081:8081" # Exposes the Flink Web UI so you can see it at http://localhost:8081.
+    # 'command' overrides the default startup command of the image. Here, we tell it to start as a 'jobmanager'.
     command: jobmanager
     environment:
-      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
+      - JOB_MANAGER_RPC_ADDRESS:flink-jobmanager
+    networks: [flead_network]
 
   flink-taskmanager:
     image: apache/flink:1.17-scala_2.12
     container_name: flink-taskmanager
-    depends_on: [flink-jobmanager]
-    command: taskmanager
+    depends_on: [flink-jobmanager] # Won't start until the manager is running.
+    command: taskmanager # Starts this container as a 'taskmanager' (a worker).
+    # 'scale' tells Docker how many of these worker containers to create.
     scale: 1
     environment:
-      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
+      - JOB_MANAGER_RPC_ADDRESS:flink-jobmanager # Tells the worker where to find its manager.
+    networks: [flead_network]
 
-  # -------------------------------------------
-  # Spark Cluster (Using Official Apache Image)
-  # -------------------------------------------
   spark-master:
     image: apache/spark:3.5.1
     container_name: spark-master
     ports:
-      - "8088:8080" # Spark Master UI
-      - "7077:7077"
+      - "8088:8080" # Spark Master Web UI at http://localhost:8088.
+      - "7077:7077" # The port Spark workers use to connect to the master.
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    networks: [flead_network]
 
   spark-worker:
     image: apache/spark:3.5.1
     container_name: spark-worker
     depends_on: [spark-master]
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    networks: [flead_network]
 
   # -------------------------------------------
-  # Application Services
+  # Application Services: Our custom-built Python applications.
   # -------------------------------------------
   server:
+    # 'build' tells Docker to build a custom image from a Dockerfile instead of pulling from Docker Hub.
     build:
-      context: .
-      dockerfile: services/server/Dockerfile
+      context: . # Look for the Dockerfile in the current directory.
+      dockerfile: services/server/Dockerfile # The specific Dockerfile to use.
     container_name: server
     depends_on:
-      kafka:
-        condition: service_started
-      timescaledb:
-        condition: service_healthy
+      # This service will wait for Kafka to be started and for TimescaleDB to be fully healthy.
+      kafka: { condition: service_started }
+      timescaledb: { condition: service_healthy }
     ports:
-      - "8080:8080"
+      - "8080:8080" # Exposes the Flower federated learning server port.
     environment:
-      KAFKA_BOOTSTRAP: kafka:29092
+      # All services now connect to Kafka via the host to bypass networking bugs.
+      KAFKA_BOOTSTRAP: host.docker.internal:29092
+      # Application-specific settings for our Python script.
       TOPIC_UPDATES: model_updates
       TOPIC_GLOBAL: global_model
       DB_DSN: postgresql://flead:password@timescaledb:5432/flead
+    networks: [flead_network]
+
+  # The three services below (client1, client2, producer) are configured similarly to the server.
+  # They build from their respective Dockerfiles and get configuration from environment variables.
 
   client1:
-    build:
-      context: .
-      dockerfile: services/client/Dockerfile
+    build: { context: ., dockerfile: services/client/Dockerfile }
     container_name: client1
     depends_on: [server]
     environment:
       CLIENT_ID: client1
-      KAFKA_BOOTSTRAP: kafka:29092
+      KAFKA_BOOTSTRAP: host.docker.internal:29092
       TOPIC_DATA: edge_data_client1
       SERVER_ADDR: server:8080
       TASK_MODE: binary
+    networks: [flead_network]
 
   client2:
-    build:
-      context: .
-      dockerfile: services/client/Dockerfile
+    build: { context: ., dockerfile: services/client/Dockerfile }
     container_name: client2
     depends_on: [server]
     environment:
       CLIENT_ID: client2
-      KAFKA_BOOTSTRAP: kafka:29092
+      KAFKA_BOOTSTRAP: host.docker.internal:29092
       TOPIC_DATA: edge_data_client2
       SERVER_ADDR: server:8080
       TASK_MODE: binary
+    networks: [flead_network]
 
   producer:
-    build:
-      context: .
-      dockerfile: services/producer/Dockerfile
+    build: { context: ., dockerfile: services/producer/Dockerfile }
     container_name: producer
-    depends_on: [kafka]
+    depends_on:
+      kafka: { condition: service_started }
     environment:
-      KAFKA_BOOTSTRAP: kafka:29092
+      KAFKA_BOOTSTRAP: host.docker.internal:29092
       TOPICS: edge_data_client1,edge_data_client2
       CSV_PATH: /data/DNN-EdgeIIoT-dataset.csv
     volumes:
+      # This is a "bind mount". It links a folder on your laptop ('./data') to a folder
+      # inside the container ('/data'). This is how we handle the large dataset without
+      # copying it into the Docker image.
       - ./data:/data
+    networks: [flead_network]
 
   # -------------------------------------------
   # Storage and Visualization
@@ -142,32 +185,45 @@ services:
       POSTGRES_DB: flead
       POSTGRES_USER: flead
     volumes:
+      # The init.sql script will be run once to create tables when the database first starts.
       - ./sql/timescale_init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Persists all the actual database data.
       - timescaledb_data:/var/lib/postgresql/data
+    # 'healthcheck' defines a command to check if the service is truly working.
     healthcheck:
+      # This command checks if the PostgreSQL server is ready to accept connections.
       test: ["CMD-SHELL", "pg_isready -U flead -d flead"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 10s # Run the test every 10 seconds.
+      timeout: 5s   # Wait up to 5 seconds for the test to complete.
+      retries: 5    # Try 5 times before marking the container as "unhealthy".
+    networks: [flead_network]
 
   grafana:
     image: grafana/grafana:11.0.0
     container_name: grafana
     ports:
-      - "3000:3000"
+      - "3000:3000" # Grafana Web UI at http://localhost:3000.
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
+      # Mounts local folders for Grafana's configuration (datasources, dashboards).
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
-      timescaledb:
-        condition: service_healthy
+      # This is crucial. Grafana will not start until TimescaleDB is fully healthy.
+      timescaledb: { condition: service_healthy }
+    networks: [flead_network]
 
-# Define named volumes for data persistence
+# This top-level section defines the "named volumes" we used above. Docker manages these for us.
 volumes:
   zookeeper_data:
   zookeeper_log:
   kafka_data:
   timescaledb_data:
+
+# This section defines the custom network that all our services will connect to.
+# This helped solve networking bugs by giving us a clean, isolated environment.
+networks:
+  flead_network:
+    driver: bridge # The standard Docker network type.

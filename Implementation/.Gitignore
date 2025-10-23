@@ -1,0 +1,3 @@
+# Ignore the entire data directory and Python cache
+data/
+__pycache__/
