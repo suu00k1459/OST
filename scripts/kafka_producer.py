@@ -7,13 +7,13 @@ Usage:
     
 Examples:
     # Stream device-specific file
-    python scripts/kafka_producer.py --source edge_iiot_processed/device_0.csv --rate 10
+    python scripts/kafka_producer.py --source data/processed/device_0.csv --rate 10
     
     # Stream merged data
-    python scripts/kafka_producer.py --source edge_iiot_processed/merged_data.csv --rate 10
+    python scripts/kafka_producer.py --source data/processed/merged_data.csv --rate 10
     
     # Auto-discover and stream all devices
-    python scripts/kafka_producer.py --source edge_iiot_processed --rate 5 --mode all-devices
+    python scripts/kafka_producer.py --source data/processed --rate 5 --mode all-devices
 """
 
 import json
@@ -69,15 +69,21 @@ class EdgeIIoTProducer:
     def connect(self):
         """Connect to Kafka broker"""
         try:
+            logger.info(f"Attempting to connect to Kafka broker: {self.bootstrap_servers}...")
             self.producer = KafkaProducer(
                 bootstrap_servers=self.bootstrap_servers,
                 value_serializer=lambda v: json.dumps(v).encode('utf-8'),
                 acks='all',
-                retries=3
+                retries=5,
+                max_in_flight_requests_per_connection=1,
+                request_timeout_ms=60000,
+                api_version_auto_discovery_interval_ms=10000
             )
-            logger.info(f"✓ Connected to Kafka broker: {self.bootstrap_servers}")
+            logger.info(f"✓ Successfully connected to Kafka broker: {self.bootstrap_servers}")
         except Exception as e:
             logger.error(f"✗ Failed to connect to Kafka: {e}")
+            logger.error(f"Make sure Docker Kafka is running on {self.bootstrap_servers}")
+            logger.error(f"Run: docker-compose -f docker-compose-production.yml up -d")
             raise
     
     def stream_from_csv(self, csv_file: str) -> Generator:
@@ -323,20 +329,20 @@ def main():
         epilog="""
 Examples:
   # Stream single device file (one pass)
-  python scripts/kafka_producer.py --source edge_iiot_processed/device_0.csv --rate 10
+  python scripts/kafka_producer.py --source notebooks/edge_iiot_processed/device_0.csv --rate 10
   
   # Stream single device file (infinite loop)
-  python scripts/kafka_producer.py --source edge_iiot_processed/device_0.csv --rate 10 --repeat
+  python scripts/kafka_producer.py --source notebooks/edge_iiot_processed/device_0.csv --rate 10 --repeat
   
   # Stream all devices from directory (one pass)
-  python scripts/kafka_producer.py --source edge_iiot_processed --mode all-devices --rate 10
+  python scripts/kafka_producer.py --source notebooks/edge_iiot_processed --mode all-devices --rate 10
   
-  # Stream all devices (infinite loop)
-  python scripts/kafka_producer.py --source edge_iiot_processed --mode all-devices --rate 10 --repeat
+  # Stream all devices (infinite loop) - RECOMMENDED
+  python scripts/kafka_producer.py --source notebooks/edge_iiot_processed --mode all-devices --rate 10 --repeat
   
   # Stream merged data with custom broker
-  python scripts/kafka_producer.py --source edge_iiot_processed/merged_data.csv \\
-                                   --broker kafka.example.com:9092 --rate 5 --repeat
+  python scripts/kafka_producer.py --source notebooks/edge_iiot_processed/merged_data.csv \\
+                                   --broker localhost:9092 --rate 5 --repeat
         """
     )
     
@@ -345,7 +351,7 @@ Examples:
                        help='CSV file path or directory containing device_*.csv files')
     parser.add_argument('--broker', 
                        default='localhost:9092',
-                       help='Kafka broker address (default: localhost:9092)')
+                       help='Kafka broker address (default: localhost:9092 - use this for Docker)')
     parser.add_argument('--topic', 
                        default='edge-iiot-stream',
                        help='Target Kafka topic (default: edge-iiot-stream)')

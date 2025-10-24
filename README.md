@@ -62,44 +62,63 @@
 
 ---
 
-## Run the project
 
-1. Ensure TimescaleDB is running:
 
-    ```bash
-    docker ps | findstr timescaledb
-    ```
+### Backend Routes
 
-2. Run complete pipeline:
+```
+GET  /api/status - System status
+GET  /api/devices - List devices
+GET  /api/devices/<id>/data - Device data
+GET  /api/notebook/content - Notebook
+POST /api/notebook/execute - Run notebook
+GET  /api/dataset/raw - Raw files
+GET  /api/dataset/processed - Processed files
+GET  /api/kafka/status - Kafka status
+POST /api/kafka/start - Start Kafka
+POST /api/kafka/stop - Stop Kafka
+GET  /api/docker/containers - Docker containers
+POST /api/training/train-device/<id> - Train device
+POST /api/training/train-all - Train all
+GET  /api/training/device/<id>/model - Model architecture
+POST /api/training/aggregate - Aggregate models
+POST /api/pipeline/run - Run pipeline
+```
 
-    ```bash
-    RUN_ALL.bat
-    ```
+### WebSocket Events
+
+```
+connect - Client connects
+disconnect - Client disconnects
+request_status - Status update
+request_devices - Device list
+status_update - Broadcast status
+devices_update - Broadcast devices
+device_trained - Training complete
+device_training_start - Training started
+training_progress - Progress update
+notebook_output - Notebook logs
+notebook_error - Notebook errors
+notebook_complete - Notebook done
+kafka_started - Kafka started
+kafka_stopped - Kafka stopped
+pipeline_* - Pipeline events
+```
+
+
+
+### 2. Start the System
+
+```bash
+./SETUP_FRONTEND.bat
+```
+
+
+
+### 3. Open in Browser
+
+```
+http://localhost:3000
+```
 
 ---
-
-## Stopping & Cleanup
-
-### Stop Everything
-
-```bash
-STOP_ALL.bat
-```
-
-### Stop MongoDb Manualy
-
-```bash
-docker stop timescaledb
-docker rm timescaledb
-```
-
-### Clean Generated Files
-
-```bash
-# Delete all outputs (optional)
-rmdir /s /q data\raw
-rmdir /s /q data\processed
-rmdir /s /q models\local
-rmdir /s /q models\global
-rmdir /s /q outputs
-```
