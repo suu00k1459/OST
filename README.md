@@ -14,29 +14,6 @@
 
 ---
 
-## Installation
-
-###
-
-1. **Install Python Dependencies**
-
-    ```bash
-    cd
-    pip install -r requirements.txt
-    ```
-
-2. **Start TimescaleDB**
-
-    ```bash
-    docker run -d --name timescaledb -p 5432:5432 -e POSTGRES_PASSWORD=postgres timescale/timescaledb:latest-pg15
-    ```
-
-3. **Run Complete Pipeline**
-    ```bash
-    RUN_ALL.bat
-    ```
-
----
 
 ## Pipeline Execution Order
 
@@ -107,7 +84,7 @@ pipeline_* - Pipeline events
 
 
 
-### 2. Start the System
+### Start the System
 
 ```bash
 ./SETUP_FRONTEND.bat
@@ -115,10 +92,10 @@ pipeline_* - Pipeline events
 
 
 
-### 3. Open in Browser
+### Open in Browser
 
 ```
-http://localhost:3000
+http://localhost:5000
 ```
 
 ---
