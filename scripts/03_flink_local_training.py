@@ -17,6 +17,7 @@ from typing import Dict, Any
 from datetime import datetime
 import numpy as np
 from collections import defaultdict
+import sys
 
 # Try to import Flink (will be available in Docker container)
 try:
@@ -27,8 +28,14 @@ try:
     FLINK_AVAILABLE = True
 except ImportError:
     FLINK_AVAILABLE = False
-    print("NOTE: Flink not available. This script runs inside Flink Docker container.")
-    print("      For local testing, use: scripts/flink_local_training_simulator.py")
+    print("ERROR: Flink not available. This script MUST run inside Flink Docker container.")
+    print("       This is NOT a host-executable script.")
+    print("       ")
+    print("To run this job, submit it to Flink:")
+    print("  docker exec flink-jobmanager flink run -py /path/to/03_flink_local_training.py")
+    print("       ")
+    print("For local testing/simulation, use: scripts/flink_local_training_simulator.py")
+    sys.exit(1)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
