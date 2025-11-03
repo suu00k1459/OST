@@ -128,7 +128,29 @@ echo Done
 echo.
 
 REM ===================================================
-REM STEP 5: DOCKER SERVICES
+REM STEP 5: DATA PREPROCESSING (OPTIONAL)
+REM ===================================================
+echo ===================================================
+echo DATA PREPROCESSING PHASE
+echo ===================================================
+echo.
+
+if exist "notebooks\Data PreProcessing.ipynb" (
+    echo Initializing data preprocessing pipeline...
+    python -c "import sys; sys.path.insert(0, 'Implementation'); from preprocess import *; print('[OK] Preprocessing module loaded successfully')" >nul 2>&1
+    if errorlevel 1 (
+        echo [WARNING] Preprocessing module not available yet. Will handle in notebooks.
+    ) else (
+        echo [OK] Preprocessing module available for use
+    )
+) else (
+    echo [WARNING] Data preprocessing notebook not found. Skipping preprocessing initialization.
+)
+echo Done
+echo.
+
+REM ===================================================
+REM STEP 6: DOCKER SERVICES
 REM ===================================================
 echo ===================================================
 echo DOCKER SERVICES PHASE
@@ -144,7 +166,7 @@ echo Done
 echo.
 
 REM ===================================================
-REM STEP 6: BACKEND SERVER
+REM STEP 7: BACKEND SERVER
 REM ===================================================
 echo ===================================================
 echo BACKEND SETUP PHASE
@@ -163,7 +185,7 @@ echo Done
 echo.
 
 REM ===================================================
-REM STEP 7: FRONTEND SERVER
+REM STEP 8: FRONTEND SERVER
 REM ===================================================
 echo ===================================================
 echo FRONTEND SETUP PHASE
@@ -177,7 +199,7 @@ echo Done
 echo.
 
 REM ===================================================
-REM STEP 8: KAFKA PRODUCER (OPTIONAL)
+REM STEP 9: KAFKA PRODUCER (OPTIONAL)
 REM ===================================================
 echo ===================================================
 echo KAFKA PRODUCER PHASE
@@ -195,7 +217,7 @@ echo Done
 echo.
 
 REM ===================================================
-REM STEP 9: OPEN BROWSER
+REM STEP 10: OPEN BROWSER
 REM ===================================================
 echo ===================================================
 echo OPENING BROWSER
