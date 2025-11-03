@@ -11,7 +11,7 @@ echo Stopping all services...
 echo.
 
 echo Step 1: Stopping Docker containers...
-docker-compose -f docker-compose-production.yml down
+call docker-compose -f docker-compose-production.yml down
 echo Done
 echo.
 
@@ -21,7 +21,7 @@ echo Done
 echo.
 
 echo Step 3: Cleaning up Docker resources...
-docker container prune -f >nul 2>&1
+call docker container prune -f >nul 2>&1
 echo Done
 echo.
 
