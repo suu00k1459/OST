@@ -1,10 +1,9 @@
 @echo off
-REM FLEAD Platform - Complete Shutdown Script
-REM Stops all services cleanly
+REM Federated Learning Platform - Complete Shutdown Script
 
 echo.
 echo ===================================================
-echo FLEAD PLATFORM - COMPLETE SHUTDOWN
+echo FEDERATED LEARNING PLATFORM - SHUTDOWN
 echo ===================================================
 echo.
 
@@ -16,17 +15,12 @@ docker-compose -f docker-compose-production.yml down
 echo Done
 echo.
 
-echo Step 2: Stopping any remaining Python processes...
+echo Step 2: Stopping Python processes (Website)...
 taskkill /F /IM python.exe /T >nul 2>&1
 echo Done
 echo.
 
-echo Step 3: Stopping any remaining Node processes...
-taskkill /F /IM node.exe /T >nul 2>&1
-echo Done
-echo.
-
-echo Step 4: Cleaning up Docker resources...
+echo Step 3: Cleaning up Docker resources...
 docker container prune -f >nul 2>&1
 echo Done
 echo.
@@ -35,13 +29,10 @@ echo ===================================================
 echo SHUTDOWN COMPLETE
 echo ===================================================
 echo.
-echo All FLEAD services have been stopped.
+echo All services stopped:
+echo   Device Viewer Website:  Stopped
+echo   Docker containers:      Stopped
 echo.
-echo Docker containers: Stopped
-echo Backend (Python): Stopped
-echo Frontend (Node): Stopped
-echo Kafka Producer: Stopped
-echo.
-echo To start again, run: ./START_PROFESSIONAL.bat
+echo To start again, run: ./START.bat
 echo.
 pause

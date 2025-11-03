@@ -1,26 +1,74 @@
-# Open source technologies for data science project
+# Federated Learning Platform for Edge IoT Data
 
 ![FLEAD architecture](/Architecture%20Diagrams/diagram4.jpg)
 
+## Dataset
 
+-   **Source**: https://www.kaggle.com/datasets/sibasispradhan/edge-iiotset-dataset
+-   **Preprocessing**: https://www.kaggle.com/code/imedbenmadi/notebookf27d2cfbac
 
-## Data Set Link : 
-**https://www.kaggle.com/datasets/sibasispradhan/edge-iiotset-dataset**
+## Quick Start
 
+Run the platform using the startup script:
 
-## Data set preprocessing :
-**https://www.kaggle.com/code/imedbenmadi/notebookf27d2cfbac**
+```batch
+./START.bat
+```
 
+This will launch the Device Viewer Website at http://localhost:8080
 
+To stop all services:
 
-## Device Viewer Website
-![Device Viewer Website](/Device%20Viewer.PNG)
-
+```batch
+./STOP.bat
+```
 
 ---
 
+## Device Viewer Website
 
-## Pipeline Execution Order
+The main interface for visualizing and exploring federated device data from CSV files.
+
+### Features
+
+-   Responsive card-based grid layout for device browsing
+-   Device statistics: row count, column count, file size, modification date
+-   Configurable pagination (12 devices per page by default)
+-   Device detail pages with first 100 rows of data
+-   Automatic handling of missing data with helpful guidance
+
+### Access
+
+-   **URL**: http://localhost:8080
+-   **Port**: 8080
+
+### Structure
+
+```
+website/
+├── app.py                    Flask application
+├── templates/
+│   ├── base.html            Base layout
+│   ├── index.html           Device listing page
+│   └── device.html          Device detail page
+├── static/
+│   └── style.css            Dashboard styling
+└── README.md                Detailed documentation
+```
+
+### Standalone Execution
+
+If you prefer to run the website without START.bat:
+
+```powershell
+python .\website\app.py
+```
+
+---
+
+## System Architecture
+
+### Pipeline Execution Order
 
 ```
 1. Data Ingestion
@@ -29,78 +77,18 @@
 2. Preprocessing
    └─> cleans data to data/processed/
 
-3. Local Training
+3. Device Viewer
+   └─> visualizes devices on http://localhost:8080
+
+4. Local Training
    └─> trains models to models/local/
 
-4. Federated Aggregation
+5. Federated Aggregation
    └─> creates global model in models/global/
 
-5. Analytics (requires TimescaleDB)
+6. Analytics (requires TimescaleDB)
    └─> stores in TimescaleDB + generates report
 
-6. Visualization
+7. Visualization
    └─> creates dashboard PNG
 ```
-
----
-
-
-
-### Backend Routes
-
-```
-GET  /api/status - System status
-GET  /api/devices - List devices
-GET  /api/devices/<id>/data - Device data
-GET  /api/notebook/content - Notebook
-POST /api/notebook/execute - Run notebook
-GET  /api/dataset/raw - Raw files
-GET  /api/dataset/processed - Processed files
-GET  /api/kafka/status - Kafka status
-POST /api/kafka/start - Start Kafka
-POST /api/kafka/stop - Stop Kafka
-GET  /api/docker/containers - Docker containers
-POST /api/training/train-device/<id> - Train device
-POST /api/training/train-all - Train all
-GET  /api/training/device/<id>/model - Model architecture
-POST /api/training/aggregate - Aggregate models
-POST /api/pipeline/run - Run pipeline
-```
-
-### WebSocket Events
-
-```
-connect - Client connects
-disconnect - Client disconnects
-request_status - Status update
-request_devices - Device list
-status_update - Broadcast status
-devices_update - Broadcast devices
-device_trained - Training complete
-device_training_start - Training started
-training_progress - Progress update
-notebook_output - Notebook logs
-notebook_error - Notebook errors
-notebook_complete - Notebook done
-kafka_started - Kafka started
-kafka_stopped - Kafka stopped
-pipeline_* - Pipeline events
-```
-
-
-
-### Start the System
-
-```bash
-./SETUP_FRONTEND.bat
-```
-
-
-
-### Open in Browser
-
-```
-http://localhost:5000
-```
-
----
