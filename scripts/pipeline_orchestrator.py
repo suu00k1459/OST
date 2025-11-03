@@ -80,6 +80,14 @@ SERVICES = {
         'critical': False,
         'background': False,
         'startup_delay': 15
+    },
+    'spark_analytics_professional': {
+        'description': 'Spark Professional Analytics (Batch + Stream + Model Evaluation)',
+        'command': ['python', str(SCRIPTS_DIR / 'spark_analytics_professional.py')],
+        'log_file': 'spark_analytics_professional.log',
+        'critical': False,
+        'background': True,
+        'startup_delay': 20
     }
 }
 
