@@ -7,9 +7,9 @@
 -   **Source**: https://www.kaggle.com/datasets/sibasispradhan/edge-iiotset-dataset
 -   **Preprocessing**: https://www.kaggle.com/code/imedbenmadi/notebookf27d2cfbac
 
-## Quick Start
+## Run the platform
 
-Run the platform using the startup script:
+ using the startup script:
 
 ```batch
 ./START.bat
@@ -27,8 +27,8 @@ To stop all services:
 
 ## Device Viewer Website
 
-The main interface for visualizing and exploring federated device data from CSV files.
-
+The main interface for visualizing and exploring federated device data from Preprocessed CSV files.
+![devive viewer website](/)
 ### Features
 
 -   Responsive card-based grid layout for device browsing
@@ -42,27 +42,6 @@ The main interface for visualizing and exploring federated device data from CSV 
 -   **URL**: http://localhost:8080
 -   **Port**: 8080
 
-### Structure
-
-```
-website/
-├── app.py                    Flask application
-├── templates/
-│   ├── base.html            Base layout
-│   ├── index.html           Device listing page
-│   └── device.html          Device detail page
-├── static/
-│   └── style.css            Dashboard styling
-└── README.md                Detailed documentation
-```
-
-### Standalone Execution
-
-If you prefer to run the website without START.bat:
-
-```powershell
-python .\website\app.py
-```
 
 ---
 
@@ -71,7 +50,7 @@ python .\website\app.py
 ### Pipeline Execution Order
 
 ```
-1. Data Ingestion
+1. Dataset Download
    └─> downloads dataset to data/raw/
 
 2. Preprocessing
@@ -79,6 +58,8 @@ python .\website\app.py
 
 3. Device Viewer
    └─> visualizes devices on http://localhost:8080
+
+4. Data streaming : using kafka
 
 4. Local Training
    └─> trains models to models/local/
