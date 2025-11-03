@@ -42,7 +42,7 @@ echo ===================================================
 echo.
 
 echo Cleaning up old Docker containers...
-call docker-compose -f docker-compose-kafka.yml down 2>nul
+call docker-compose down 2>nul
 call docker container rm -f zookeeper kafka timescaledb grafana kafka-ui 2>nul
 echo Done
 echo.
@@ -55,24 +55,30 @@ echo PYTHON SETUP PHASE
 echo ===================================================
 echo.
 
+echo Installing Python dependencies...
+call pip install --upgrade pip setuptools wheel
+if errorlevel 1 (
+    echo [ERROR] Failed to upgrade pip/setuptools.
+    pause
+    exit /b 1
+)
+
 if exist "install_dependencies.py" (
-    echo Installing Python dependencies using installer...
+    echo Installing from installer...
     call python install_dependencies.py
     if errorlevel 1 (
-        echo [ERROR] Failed to install Python dependencies.
-        pause
-        exit /b 1
-    )
-) else (
-    echo Fallback: Installing directly from requirements.txt...
-    call pip install --upgrade pip
-    call pip install -r requirements.txt
-    if errorlevel 1 (
-        echo [ERROR] Pip installation failed.
-        pause
-        exit /b 1
+        echo [WARNING] Installer failed, falling back to requirements.txt
     )
 )
+
+echo Installing from requirements.txt...
+call pip install --no-cache-dir -r requirements.txt
+if errorlevel 1 (
+    echo [ERROR] Failed to install dependencies from requirements.txt
+    pause
+    exit /b 1
+)
+
 echo Done
 echo.
 
@@ -109,8 +115,45 @@ echo.
 echo Starting Docker containers...
 echo This may take 30-60 seconds for all services to be healthy.
 echo.
-start "Docker Services" cmd /k "docker-compose -f docker-compose-production.yml up"
-timeout /t 45 >nul
+start "Docker Services" cmd /k "docker-compose up"
+echo.
+
+echo Waiting for Docker services to become healthy...
+setlocal enabledelayedexpansion
+set "wait_count=0"
+set "max_wait=120"
+
+:wait_for_services
+set /a wait_count=!wait_count!+1
+
+REM Check if all services are healthy
+for /f "tokens=*" %%a in ('docker-compose ps --services --filter "status=running"') do (
+    set services_running=%%a
+)
+
+REM Check health status
+docker-compose ps | findstr "healthy" >nul 2>&1
+if errorlevel 0 (
+    REM Try to find if all critical services are healthy
+    docker-compose ps | find "kafka" | find "healthy" >nul 2>&1
+    set kafka_ok=!errorlevel!
+    docker-compose ps | find "timescaledb" | find "healthy" >nul 2>&1
+    set db_ok=!errorlevel!
+    
+    if !kafka_ok! equ 0 if !db_ok! equ 0 (
+        echo [OK] All Docker services are healthy
+        goto services_ready
+    )
+)
+
+if !wait_count! lss !max_wait! (
+    timeout /t 1 >nul
+    goto wait_for_services
+)
+
+echo [WARNING] Timeout waiting for Docker services. Continuing anyway...
+
+:services_ready
 echo Done
 echo.
 
@@ -154,7 +197,9 @@ echo ===================================================
 echo.
 echo SERVICES RUNNING:
 echo   Device Viewer Website:  http://localhost:8080
-echo   Docker Services:        (Optional - Kafka, TimescaleDB, Grafana)
+echo   Kafka UI:               http://localhost:8081
+echo   Grafana:                http://localhost:3001
+echo   TimescaleDB:            localhost:5432
 echo.
 echo Check browser at http://localhost:8080
 echo.

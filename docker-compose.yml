@@ -1,0 +1,114 @@
+version: "3.8"
+
+services:
+    # -------------------------------------------
+    # Kafka - Message Broker (KRaft mode, no Zookeeper)
+    # -------------------------------------------
+    kafka:
+        image: confluentinc/cp-kafka:7.6.1
+        container_name: kafka
+        ports:
+            - "9092:9092"
+            - "29092:29092"
+        environment:
+            KAFKA_BROKER_ID: 1
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+            KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+            KAFKA_PROCESS_ROLES: broker,controller
+            KAFKA_NODE_ID: 1
+            KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+            KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
+            KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+            KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+        volumes:
+            - kafka_data:/var/lib/kafka/data
+        networks:
+            - flead_network
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "kafka-broker-api-versions.sh",
+                    "--bootstrap-server",
+                    "localhost:9092",
+                ]
+            interval: 10s
+            timeout: 10s
+            retries: 5
+
+    # -------------------------------------------
+    # Kafka UI - Kafka Management Interface
+    # -------------------------------------------
+    kafka-ui:
+        image: provectuslabs/kafka-ui:latest
+        container_name: kafka-ui
+        depends_on:
+            kafka:
+                condition: service_healthy
+        ports:
+            - "8081:8080"
+        environment:
+            KAFKA_CLUSTERS_0_NAME: flead-cluster
+            KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+        networks:
+            - flead_network
+
+    # -------------------------------------------
+    # TimescaleDB - Time-Series Database
+    # -------------------------------------------
+    timescaledb:
+        image: timescale/timescaledb-ha:pg16
+        container_name: timescaledb
+        ports:
+            - "5432:5432"
+        environment:
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: flead
+            POSTGRES_USER: flead
+        volumes:
+            - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+            - timescaledb_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U flead -d flead -h localhost"]
+            interval: 5s
+            timeout: 10s
+            retries: 20
+            start_period: 30s
+        networks:
+            - flead_network
+
+    # -------------------------------------------
+    # Grafana - Monitoring & Visualization
+    # -------------------------------------------
+    grafana:
+        image: grafana/grafana:11.0.0
+        container_name: grafana
+        ports:
+            - "3001:3000"
+        environment:
+            GF_SECURITY_ADMIN_USER: admin
+            GF_SECURITY_ADMIN_PASSWORD: admin
+        volumes:
+            - ./grafana/provisioning:/etc/grafana/provisioning
+            - ./grafana/dashboards:/var/lib/grafana/dashboards
+        depends_on:
+            timescaledb:
+                condition: service_healthy
+        networks:
+            - flead_network
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+volumes:
+    kafka_data:
+    timescaledb_data:
+
+networks:
+    flead_network:
+        driver: bridge
