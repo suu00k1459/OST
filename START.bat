@@ -63,13 +63,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if exist "install_dependencies.py" (
-    echo Installing from installer...
-    call python install_dependencies.py
-    if errorlevel 1 (
-        echo [WARNING] Installer failed, falling back to requirements.txt
-    )
-)
+
 
 echo Installing from requirements.txt...
 call pip install --no-cache-dir -r requirements.txt
@@ -77,6 +71,16 @@ if errorlevel 1 (
     echo [ERROR] Failed to install dependencies from requirements.txt
     pause
     exit /b 1
+)
+
+if exist "scripts\install_dependencies.py" (
+    echo Running install_dependencies.py from scripts folder...
+    call python scripts\install_dependencies.py
+    if errorlevel 1 (
+        echo [WARNING] install_dependencies.py encountered issues
+    )
+) else (
+    echo [WARNING] install_dependencies.py not found in scripts folder
 )
 
 echo Done
