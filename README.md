@@ -22,29 +22,35 @@ To stop all services:
 ```batch
 ./STOP.bat
 ```
+---
 
+### Access
+**Device Viewer Website:**
+-   **URL**: http://localhost:8080
+-   **Port**: 8080
+**Kafka UI:**
+-   **URL**: http://localhost:8081
+-   **Port**: 8081
+**Grafana Dashboard:**
+-   **URL**: http://localhost:3001
+-   **Port**: 3001
 ---
 
 ## Device Viewer Website
 
 The main interface for visualizing and exploring federated device data from Preprocessed CSV files.
 ![devive viewer website](/Device%20Viewer.PNG)
-### Features
-
--   Responsive card-based grid layout for device browsing
--   Device statistics: row count, column count, file size, modification date
--   Configurable pagination (12 devices per page by default)
--   Device detail pages with first 100 rows of data
--   Automatic handling of missing data with helpful guidance
-
-### Access
-
--   **URL**: http://localhost:8080
--   **Port**: 8080
 
 
 ---
+## TimeScale Database Config information :
+Host: localhost
+Port: 5432
+Database: flead
+Username: flead
+Password: password
 
+---
 ## System Architecture
 
 ### Pipeline Execution Order
