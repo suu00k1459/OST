@@ -28,7 +28,7 @@ To stop all services:
 ## Device Viewer Website
 
 The main interface for visualizing and exploring federated device data from Preprocessed CSV files.
-![devive viewer website](/)
+![devive viewer website](./Device Viewer.PNG)
 ### Features
 
 -   Responsive card-based grid layout for device browsing
