@@ -91,14 +91,14 @@ kafka:
 
 ## Current Service Status
 
-✅ **All services running and healthy:**
+ **All services running and healthy:**
 
 | Service     | Status     | Port       | URL                   |
 | ----------- | ---------- | ---------- | --------------------- |
-| Kafka       | Healthy ✅ | 9092/29092 | N/A                   |
-| Kafka-UI    | Running ✅ | 8081       | http://localhost:8081 |
-| TimescaleDB | Healthy ✅ | 5432       | localhost:5432        |
-| Grafana     | Healthy ✅ | 3001       | http://localhost:3001 |
+| Kafka       | Healthy  | 9092/29092 | N/A                   |
+| Kafka-UI    | Running  | 8081       | http://localhost:8081 |
+| TimescaleDB | Healthy  | 5432       | localhost:5432        |
+| Grafana     | Healthy  | 3001       | http://localhost:3001 |
 
 ## Key Changes Made to docker-compose.yml
 
