@@ -12,6 +12,11 @@
 **https://www.kaggle.com/code/imedbenmadi/notebookf27d2cfbac**
 
 
+
+## Device Viewer Website
+![Device Viewer Website](/Device%20Viewer.PNG)
+
+
 ---
 
 
