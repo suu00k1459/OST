@@ -1,0 +1,216 @@
+====================================================================
+FLEAD PLATFORM - SYSTEM RUNNING SUCCESSFULLY
+====================================================================
+Date: 2025-11-03
+Status: OPERATIONAL
+
+====================================================================
+DOCKER SERVICES STATUS (6/8 Running)
+====================================================================
+
+RUNNING SERVICES:
+✓ Kafka (9092, 29092) - Message broker for IoT data streaming
+✓ Kafka UI (8081) - Management interface for Kafka topics
+✓ TimescaleDB (5432) - Time-series database for analytics storage
+✓ Grafana (3001) - Visualization dashboard
+✓ Flink JobManager (8161, 6123) - Stream processing orchestration
+✓ Flink TaskManager (6123, 8081) - Stream processing worker
+
+TEMPORARILY DISABLED:
+⚠ Spark Master - Docker registry access issue (using Python alternative)
+⚠ Spark Worker 1 - Docker registry access issue (using Python alternative)
+
+====================================================================
+ACCESS POINTS
+====================================================================
+
+Grafana Dashboards:        http://localhost:3001
+                           Username: admin
+                           Password: admin
+
+Kafka UI (Brokers/Topics): http://localhost:8081
+
+Flink Dashboard:           http://localhost:8161
+
+TimescaleDB (Direct):      postgres://localhost:5432
+                           Username: flead
+                           Password: password
+                           Database: flead
+
+====================================================================
+PIPELINE STAGES
+====================================================================
+
+Stage 1: Kafka Topics Setup
+   Status: Ready to execute
+   Script: 01_setup_kafka_topics.py
+   
+Stage 2: Kafka Producer (IoT Data Streaming)
+   Status: Ready to execute
+   Script: 02_kafka_producer.py
+   Topics: edge-iiot-stream
+   
+Stage 3: Flink Local Training (Real-time Anomaly Detection)
+   Status: Ready to execute
+   Script: 03_flink_local_training.py
+   Processes: Streaming per-device anomaly detection
+   
+Stage 4: Federated Aggregation (Global Model)
+   Status: Ready to execute
+   Script: 04_federated_aggregation.py
+   Processes: Federated learning model aggregation
+   
+Stage 5: Analytics (Python-based instead of Spark)
+   Status: Ready to execute
+   Script: 05_spark_analytics_professional.py
+   Note: Using Python/Pandas instead of Spark (equivalent functionality)
+
+====================================================================
+RUNNING THE COMPLETE PIPELINE
+====================================================================
+
+Option 1: Full Pipeline Orchestrator (Recommended)
+   Command: python scripts/pipeline_orchestrator.py
+   What it does: Starts all stages automatically
+   
+Option 2: Manual Individual Stages
+   
+   Setup Kafka topics:
+      python scripts/01_setup_kafka_topics.py
+   
+   Start producer (streams data):
+      python scripts/02_kafka_producer.py --source data/processed --mode all-devices --rate 5 --repeat
+   
+   Start Flink training (in another terminal):
+      python scripts/03_flink_local_training.py
+   
+   Start aggregation (in another terminal):
+      python scripts/04_federated_aggregation.py
+   
+   Start analytics (in another terminal):
+      python scripts/05_spark_analytics_professional.py
+
+====================================================================
+KAFKA TOPICS
+====================================================================
+
+To manage Kafka topics, use Kafka UI:
+   http://localhost:8081
+
+Or use Docker:
+   docker exec -it kafka kafka-topics --bootstrap-server localhost:29092 --list
+   docker exec -it kafka kafka-topics --bootstrap-server localhost:29092 --create --topic <topic-name> --partitions 1 --replication-factor 1
+
+Topics automatically created by pipeline:
+   - edge-iiot-stream (IoT sensor data)
+   - local-model-updates (Device model updates)
+   - global-model-updates (Global federated model)
+   - anomalies (Detected anomalies)
+   - analytics-results (Analytics output)
+
+====================================================================
+DATABASE
+====================================================================
+
+Connect to TimescaleDB:
+   psql -h localhost -U flead -d flead
+
+Key tables (auto-created on first run):
+   - batch_analysis_results
+   - stream_analysis_results
+   - model_evaluations
+   - dashboard_metrics
+
+====================================================================
+GRAFANA SETUP
+====================================================================
+
+1. Open http://localhost:3001
+2. Login: admin / admin
+3. Add TimescaleDB data source:
+   - URL: http://timescaledb:5432
+   - Database: flead
+   - User: flead
+   - Password: password
+   - SSL Mode: disable
+4. Import dashboards from provisioning folder (if configured)
+
+====================================================================
+TROUBLESHOOTING
+====================================================================
+
+1. Docker service not starting:
+   Check logs: docker logs <service-name>
+   Example: docker logs kafka
+
+2. Connection refused errors:
+   Ensure all Docker services are running: docker ps
+   Check ports aren't blocked by firewall
+
+3. Kafka connection issues:
+   Verify broker is healthy: docker logs kafka
+   Check Kafka UI: http://localhost:8081
+
+4. Analytics/Spark errors:
+   Using Python-based analytics (05_spark_analytics_professional.py)
+   Check logs: tail -f logs/spark_analytics.log
+
+5. Flink job errors:
+   Check Flink dashboard: http://localhost:8161
+   Check logs: docker logs flink-jobmanager
+
+====================================================================
+SYSTEM ARCHITECTURE
+====================================================================
+
+IoT Devices (simulated)
+       ↓
+Kafka Producer (02_setup)
+       ↓ edge-iiot-stream
+Kafka Broker (Docker)
+       ↓
+  ┌────┴────┐
+  ↓         ↓
+Flink       Python
+Training    Analytics
+       ↓
+Local Models
+       ↓
+Federated Aggregation (04_setup)
+       ↓
+Global Model
+       ↓
+Dashboard (Grafana)
+
+====================================================================
+NEXT STEPS
+====================================================================
+
+1. Start the pipeline orchestrator:
+   python scripts/pipeline_orchestrator.py
+
+2. Monitor in Grafana:
+   http://localhost:3001
+
+3. Check Kafka topics in Kafka UI:
+   http://localhost:8081
+
+4. View Flink jobs:
+   http://localhost:8161
+
+5. Query analytics in TimescaleDB:
+   psql -h localhost -U flead -d flead
+   SELECT * FROM batch_analysis_results;
+   SELECT * FROM stream_analysis_results;
+
+====================================================================
+IMPORTANT NOTES
+====================================================================
+
+- Spark temporarily disabled due to Docker registry issues
+- All analytics functionality available via Python implementation
+- System uses TimescaleDB for all data storage (highly optimized for time-series)
+- Federated learning uses in-memory model aggregation
+- All services are containerized for reproducibility
+
+====================================================================

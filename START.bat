@@ -97,9 +97,13 @@ echo DOCKER SERVICES STARTUP
 echo ====================================================================
 echo.
 
-echo Starting Docker containers in background...
+echo Starting Docker containers...
 echo This includes: Kafka, TimescaleDB, Flink, Spark, Grafana
-start "Docker Services" /MIN cmd /k "docker-compose up"
+echo.
+echo Docker logs will appear below:
+echo ====================================================================
+call docker-compose up -d
+echo ====================================================================
 echo.
 
 echo Waiting for Docker services to become healthy (max 120 seconds)...
@@ -124,9 +128,14 @@ if !kafka_ok! equ 0 if !db_ok! equ 0 (
 if !wait_count! lss !max_wait! (
     if !wait_count! equ 1 (
         echo Attempt !wait_count!/!max_wait!...
+        echo Showing Docker service status:
+        docker-compose ps
+        echo.
     ) else (
         if !wait_count! equ 30 (
             echo Still waiting... Attempt !wait_count!/!max_wait!
+            echo Recent Docker logs:
+            docker-compose logs --tail 5 2^>nul
         )
         if !wait_count! equ 60 (
             echo Still waiting... Attempt !wait_count!/!max_wait!
@@ -143,6 +152,14 @@ echo [WARNING] Docker services may not be fully healthy, continuing anyway...
 
 :services_ready
 echo Done
+echo.
+
+echo Current Docker container status:
+docker-compose ps
+echo.
+
+echo Showing Docker logs summary:
+docker-compose logs --tail 10 2^>nul
 echo.
 
 REM ===================================================

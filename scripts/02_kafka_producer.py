@@ -76,14 +76,13 @@ class EdgeIIoTProducer:
                 acks='all',
                 retries=5,
                 max_in_flight_requests_per_connection=1,
-                request_timeout_ms=60000,
-                api_version_auto_discovery_interval_ms=10000
+                request_timeout_ms=60000
             )
-            logger.info(f"✓ Successfully connected to Kafka broker: {self.bootstrap_servers}")
+            logger.info(f"Successfully connected to Kafka broker: {self.bootstrap_servers}")
         except Exception as e:
-            logger.error(f"✗ Failed to connect to Kafka: {e}")
+            logger.error(f"Failed to connect to Kafka: {e}")
             logger.error(f"Make sure Docker Kafka is running on {self.bootstrap_servers}")
-            logger.error(f"Run: docker-compose -f docker-compose-production.yml up -d")
+            logger.error(f"Run: docker-compose up -d")
             raise
     
     def stream_from_csv(self, csv_file: str) -> Generator:

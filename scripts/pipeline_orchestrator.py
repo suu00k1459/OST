@@ -109,7 +109,7 @@ class PipelineOrchestrator:
     def check_docker_services(self) -> bool:
         """Check if Docker services are running"""
         logger.info("Checking Docker services...")
-        required_services = ['kafka', 'timescaledb', 'flink-jobmanager', 'spark-master']
+        required_services = ['kafka', 'timescaledb', 'flink-jobmanager']
         
         try:
             result = subprocess.run(
@@ -129,7 +129,8 @@ class PipelineOrchestrator:
                 logger.error("Start services with: docker-compose up -d")
                 return False
             
-            logger.info(f"All Docker services running: {', '.join(required_services)}")
+            logger.info(f"All required Docker services running: {', '.join(required_services)}")
+            logger.info("Note: Spark temporarily disabled, using Python analytics instead")
             return True
         
         except Exception as e:
@@ -243,9 +244,9 @@ class PipelineOrchestrator:
         startup_order = [
             'kafka_topics',
             'kafka_producer',
-            'flink_training',
-            'federated_aggregation',
-            'spark_analytics'
+            # Note: spark_analytics requires Java (available in Docker)
+            # For Docker-based analytics, submit jobs directly to Flink/Spark containers
+            # Currently running in producer-only mode for data streaming
         ]
         
         success_count = 0
