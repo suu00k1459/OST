@@ -6,12 +6,8 @@ edge_iiot_processed
 .ipynb_checkpoints
 
 
-app.py
-device_simulator.py
-fed_learning_utils.py
-FLEAD_offline_simulation.ipynb
 
-templates
+
 
 # Ignore large datasets
 data/*.csv

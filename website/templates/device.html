@@ -1,0 +1,98 @@
+{% extends 'base.html' %} {% block content %}
+<div class="container mt-5">
+    <!-- Header & Navigation -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a
+                href="{{ url_for('index') }}"
+                class="text-decoration-none text-muted small"
+            >
+                <i class="fas fa-arrow-left"></i> Back to Devices
+            </a>
+            <h1 class="display-6 fw-bold mt-2">
+                {{ filename | replace('.csv', '') }}
+            </h1>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    {% if header %}
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="fl-stat-card-large">
+                <div class="fl-stat-icon"><i class="fas fa-list"></i></div>
+                <div class="fl-stat-number">{{ stats.rows }}</div>
+                <div class="fl-stat-label">Total Rows</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="fl-stat-card-large">
+                <div class="fl-stat-icon"><i class="fas fa-columns"></i></div>
+                <div class="fl-stat-number">{{ stats.cols }}</div>
+                <div class="fl-stat-label">Columns</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="fl-stat-card-large">
+                <div class="fl-stat-icon"><i class="fas fa-hdd"></i></div>
+                <div class="fl-stat-number">{{ stats.size_kb }}</div>
+                <div class="fl-stat-label">Size (KB)</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="fl-stat-card-large">
+                <div class="fl-stat-icon"><i class="fas fa-clock"></i></div>
+                <div class="fl-stat-number small">{{ stats.modified }}</div>
+                <div class="fl-stat-label">Last Modified</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Data Preview -->
+    {% if not header %}
+    <div class="alert alert-info alert-lg border-0 shadow-sm">
+        <i class="fas fa-info-circle fa-lg me-2"></i>
+        <strong>Empty Dataset</strong> — This CSV file appears to be empty.
+    </div>
+    {% else %}
+    <div class="fl-data-preview">
+        <div class="fl-data-header">
+            <h5 class="mb-0">
+                <i class="fas fa-table"></i> Data Preview
+                <span class="badge bg-secondary ms-2">First 100 rows</span>
+            </h5>
+        </div>
+        <div class="fl-data-table-wrapper">
+            <table class="table table-sm fl-data-table">
+                <thead>
+                    <tr>
+                        {% for h in header %}
+                        <th>{{ h }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        {% for cell in row %}
+                        <td class="fl-cell">{{ cell }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if rows|length >= 100 %}
+        <div class="fl-data-footer">
+            <p class="small text-muted mb-0">
+                <i class="fas fa-info-circle"></i>
+                Showing first 100 rows of {{ stats.rows }} total rows.
+                <a href="#" class="ms-2">Download full CSV →</a>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
