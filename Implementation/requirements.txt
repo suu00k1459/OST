@@ -1,6 +1,0 @@
-kafka-python==2.0.2
-flwr==1.8.0
-tensorflow-cpu==2.16.1
-pandas==2.2.2
-scikit-learn==1.5.1
-psycopg[binary]==3.2.1

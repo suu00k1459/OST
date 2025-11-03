@@ -1,4 +1,0 @@
-PLEASE PLEASE
-DOWNLOAD THE DATA from here https://www.kaggle.com/datasets/sibasispradhan/edge-iiotset-dataset?resource=download
-AND PUT THE .CSV Files in /Implementation/data folder before run
-.CSV Files is huge to be uploaded in Github 
