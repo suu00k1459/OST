@@ -41,13 +41,13 @@ MAX_HEALTH_CHECK_RETRIES = 10
 SERVICES = {
     'kafka_topics': {
         'description': 'Setup Kafka Topics',
-        'command': ['python', str(SCRIPTS_DIR / 'setup_kafka_topics.py')],
+        'command': ['python', str(SCRIPTS_DIR / '01_setup_kafka_topics.py')],
         'log_file': 'kafka_topics.log',
         'critical': True
     },
     'kafka_producer': {
         'description': 'Kafka Producer (Stream IoT Data)',
-        'command': ['python', str(SCRIPTS_DIR / 'kafka_producer.py'),
+        'command': ['python', str(SCRIPTS_DIR / '02_kafka_producer.py'),
                    '--source', str(ROOT_DIR / 'data' / 'processed'),
                    '--mode', 'all-devices',
                    '--rate', '5',
@@ -59,7 +59,7 @@ SERVICES = {
     },
     'flink_training': {
         'description': 'Flink Local Model Training (Real-time Streaming)',
-        'command': ['python', str(SCRIPTS_DIR / 'flink_local_training.py')],
+        'command': ['python', str(SCRIPTS_DIR / '03_flink_local_training.py')],
         'log_file': 'flink_training.log',
         'critical': False,
         'background': True,
@@ -67,24 +67,16 @@ SERVICES = {
     },
     'federated_aggregation': {
         'description': 'Federated Aggregation (Global Model)',
-        'command': ['python', str(SCRIPTS_DIR / 'federated_aggregation.py')],
+        'command': ['python', str(SCRIPTS_DIR / '04_federated_aggregation.py')],
         'log_file': 'federated_aggregation.log',
         'critical': False,
         'background': True,
         'startup_delay': 10
     },
     'spark_analytics': {
-        'description': 'Spark Batch Analytics (Long-term Trends)',
-        'command': ['python', str(SCRIPTS_DIR / 'spark_batch_analytics.py')],
-        'log_file': 'spark_analytics.log',
-        'critical': False,
-        'background': False,
-        'startup_delay': 15
-    },
-    'spark_analytics_professional': {
         'description': 'Spark Professional Analytics (Batch + Stream + Model Evaluation)',
-        'command': ['python', str(SCRIPTS_DIR / 'spark_analytics_professional.py')],
-        'log_file': 'spark_analytics_professional.log',
+        'command': ['python', str(SCRIPTS_DIR / '05_spark_analytics_professional.py')],
+        'log_file': 'spark_analytics.log',
         'critical': False,
         'background': True,
         'startup_delay': 20
@@ -110,7 +102,7 @@ class PipelineOrchestrator:
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals"""
-        logger.info("\n⚠ Shutdown signal received, stopping services...")
+        logger.info("\nShutdown signal received, stopping services...")
         self.cleanup()
         sys.exit(0)
     
@@ -133,15 +125,15 @@ class PipelineOrchestrator:
             missing = [s for s in required_services if s not in running_services]
             
             if missing:
-                logger.error(f"✗ Missing Docker services: {missing}")
+                logger.error(f"Missing Docker services: {missing}")
                 logger.error("Start services with: docker-compose up -d")
                 return False
             
-            logger.info(f"✓ All Docker services running: {', '.join(required_services)}")
+            logger.info(f"All Docker services running: {', '.join(required_services)}")
             return True
         
         except Exception as e:
-            logger.error(f"✗ Error checking Docker services: {e}")
+            logger.error(f"Error checking Docker services: {e}")
             return False
     
     def check_kafka_topics(self) -> bool:
@@ -168,14 +160,14 @@ class PipelineOrchestrator:
             missing = [t for t in required_topics if t not in existing_topics]
             
             if missing:
-                logger.info(f"⚠ Missing topics will be created: {missing}")
+                logger.info(f"Missing topics will be created: {missing}")
                 return False
             
-            logger.info(f"✓ All Kafka topics exist")
+            logger.info(f"All Kafka topics exist")
             return True
         
         except Exception as e:
-            logger.warning(f"⚠ Could not verify topics: {e}")
+            logger.warning(f"Could not verify topics: {e}")
             return False
     
     def start_service(self, service_name: str, config: Dict) -> bool:
@@ -207,11 +199,11 @@ class PipelineOrchestrator:
                 
                 # Check if process is still running
                 if process.poll() is not None:
-                    logger.error(f"✗ Service crashed on startup")
+                    logger.error(f"Service crashed on startup")
                     logger.error(f"  Check logs: {log_file}")
                     return False
                 
-                logger.info(f"✓ Service running (PID: {process.pid})")
+                logger.info(f"Service running (PID: {process.pid})")
                 logger.info(f"  Logs: {log_file}")
             else:
                 # Wait for foreground service to complete
@@ -219,16 +211,16 @@ class PipelineOrchestrator:
                 return_code = process.wait()
                 
                 if return_code != 0:
-                    logger.error(f"✗ Service failed with exit code {return_code}")
+                    logger.error(f"Service failed with exit code {return_code}")
                     logger.error(f"  Check logs: {log_file}")
                     return False
                 
-                logger.info(f"✓ Service completed successfully")
+                logger.info(f"Service completed successfully")
             
             return True
         
         except Exception as e:
-            logger.error(f"✗ Error starting service: {e}")
+            logger.error(f"Error starting service: {e}")
             return False
     
     def start_all_services(self) -> bool:
@@ -242,7 +234,7 @@ class PipelineOrchestrator:
         
         # Check prerequisites
         if not self.check_docker_services():
-            logger.error("\n✗ Docker services not ready")
+            logger.error("\nDocker services not ready")
             logger.error("Start Docker services first:")
             logger.error("  docker-compose up -d")
             return False
@@ -266,7 +258,7 @@ class PipelineOrchestrator:
             
             # Skip optional services if needed
             if not config.get('critical', True) and len(self.failed_services) > 0:
-                logger.warning(f"⚠ Skipping optional service: {config['description']}")
+                logger.warning(f"Skipping optional service: {config['description']}")
                 continue
             
             if self.start_service(service_name, config):
@@ -275,7 +267,7 @@ class PipelineOrchestrator:
                 self.failed_services.append(service_name)
                 
                 if config.get('critical', True):
-                    logger.error("\n✗ Critical service failed, stopping pipeline")
+                    logger.error("\nCritical service failed, stopping pipeline")
                     break
         
         return len(self.failed_services) == 0
@@ -292,20 +284,20 @@ class PipelineOrchestrator:
             if process.poll() is None:  # Still running
                 config = SERVICES.get(service_name, {})
                 active_services.append(service_name)
-                logger.info(f"✓ {config.get('description', service_name)} (PID: {process.pid})")
+                logger.info(f"{config.get('description', service_name)} (PID: {process.pid})")
         
         if not active_services:
-            logger.warning("⚠ No services currently running")
+            logger.warning("No services currently running")
         
         # Display access points
         logger.info("\n" + "=" * 70)
         logger.info("ACCESS POINTS")
         logger.info("=" * 70)
-        logger.info("Device Viewer Website:    http://localhost:8080")
-        logger.info("Kafka UI:                 http://localhost:8081")
         logger.info("Grafana Dashboard:        http://localhost:3001 (admin/admin)")
+        logger.info("Kafka UI:                 http://localhost:8081")
+        logger.info("Device Viewer Website:    http://localhost:8082")
         logger.info("Flink Dashboard:          http://localhost:8161")
-        logger.info("Spark Master:             http://localhost:8080")
+        logger.info("Spark Master:             http://localhost:8086")
         logger.info("TimescaleDB:              localhost:5432")
         
         # Display pipeline flow
@@ -359,7 +351,7 @@ class PipelineOrchestrator:
                     # Wait for graceful shutdown
                     try:
                         process.wait(timeout=5)
-                        logger.info(f"✓ {service_name} stopped")
+                        logger.info(f"Stopped {service_name}")
                     except subprocess.TimeoutExpired:
                         logger.warning(f"Force killing {service_name}...")
                         process.kill()
@@ -367,7 +359,7 @@ class PipelineOrchestrator:
                 except Exception as e:
                     logger.warning(f"Error stopping {service_name}: {e}")
         
-        logger.info("✓ Cleanup complete")
+        logger.info("Cleanup complete")
 
 
 def main():
@@ -380,14 +372,14 @@ def main():
             # Show status and keep running
             orchestrator.show_pipeline_status()
             
-            logger.info("\n✓ Pipeline started successfully!")
+            logger.info("\nPipeline started successfully!")
             logger.info("Press Ctrl+C to stop\n")
             
             # Keep orchestrator running
             while True:
                 time.sleep(1)
         else:
-            logger.error("\n✗ Pipeline startup failed")
+            logger.error("\nPipeline startup failed")
             sys.exit(1)
     
     except KeyboardInterrupt:

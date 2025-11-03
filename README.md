@@ -9,31 +9,35 @@
 
 ## Run the platform
 
- using the startup script:
+using the startup script:
 
 ```batch
 ./START.bat
 ```
 
-This will launch the Device Viewer Website at http://localhost:8080
+This will launch the Device Viewer Website at http://localhost:8082
 
 To stop all services:
 
 ```batch
 ./STOP.bat
 ```
+
 ---
 
 ### Access
+
 **Device Viewer Website:**
--   **URL**: http://localhost:8080
+
+-   **URL**: http://localhost:8082
 -   **Port**: 8080
-**Kafka UI:**
+    **Kafka UI:**
 -   **URL**: http://localhost:8081
 -   **Port**: 8081
-**Grafana Dashboard:**
+    **Grafana Dashboard:**
 -   **URL**: http://localhost:3001
 -   **Port**: 3001
+
 ---
 
 ## Device Viewer Website
@@ -41,9 +45,10 @@ To stop all services:
 The main interface for visualizing and exploring federated device data from Preprocessed CSV files.
 ![devive viewer website](/Device%20Viewer.PNG)
 
-
 ---
+
 ## TimeScale Database Config information :
+
 Host: localhost
 Port: 5432
 Database: flead
@@ -51,6 +56,7 @@ Username: flead
 Password: password
 
 ---
+
 ## System Architecture
 
 ### Pipeline Execution Order
@@ -63,15 +69,15 @@ Password: password
    └─> cleans data to data/processed/
 
 3. Device Viewer
-   └─> visualizes devices on http://localhost:8080
+   └─> visualizes devices on http://localhost:8082
 
-4. Data streaming : 
+4. Data streaming :
    └─> using kafka Streaming
 
 5. Local Training using Flink
    └─> trains models to models/local/
 
-6. Federated Aggregation 
+6. Federated Aggregation
    └─> creates global model in models/global/
 
 7. Analytics (requires TimescaleDB)

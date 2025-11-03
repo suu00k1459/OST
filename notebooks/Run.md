@@ -4,22 +4,16 @@ docker-compose -f docker-compose-kafka.yml up -d
 
 ---
 
-
-
-
-
-
-
-### Kafka Localhost Link : **http://localhost:8080**
+### Kafka Localhost Link : **http://localhost:8081**
 
 ### Python Path : cd "c:\Users\imadb\OneDrive\Bureau\OST Project"
 
-
 ### Option A: Stream Single Device
+
 ```bash
 
 python scripts/kafka_producer.py --source edge_iiot_processed/device_0.csv --rate 10
-````
+```
 
 ### Option B: Stream All Devices (Sequentially)
 
@@ -53,15 +47,14 @@ python scripts/kafka_producer.py \
 -   `--mode`: 'single' or 'all-devices' (default: single)
 -   `--duration`: Run duration in seconds (optional)
 
-
-
 ---
 
 ### **Verify Kafka is running:**
 
-````bash
+```bash
 # Check running containers
 docker ps
 
 # View logs
 docker-compose -f docker-compose-kafka.yml logs -f
+```

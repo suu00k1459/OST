@@ -180,11 +180,11 @@ echo PLATFORM STARTUP COMPLETE
 echo ====================================================================
 echo.
 echo ACCESS POINTS:
-echo   Device Viewer Website:    http://localhost:8080
-echo   Kafka UI:                 http://localhost:8081
 echo   Grafana Dashboard:        http://localhost:3001  (admin/admin)
+echo   Kafka UI:                 http://localhost:8081
+echo   Device Viewer Website:    http://localhost:8082
 echo   Flink Dashboard:          http://localhost:8161
-echo   Spark Master:             http://localhost:8080
+echo   Spark Master:             http://localhost:8086
 echo   TimescaleDB:              localhost:5432
 echo.
 echo PIPELINE COMPONENTS:
