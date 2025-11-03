@@ -28,7 +28,7 @@ To stop all services:
 ## Device Viewer Website
 
 The main interface for visualizing and exploring federated device data from Preprocessed CSV files.
-![devive viewer website](./Device Viewer.PNG)
+![devive viewer website](/Device%20Viewer.PNG)
 ### Features
 
 -   Responsive card-based grid layout for device browsing
@@ -59,17 +59,18 @@ The main interface for visualizing and exploring federated device data from Prep
 3. Device Viewer
    └─> visualizes devices on http://localhost:8080
 
-4. Data streaming : using kafka
+4. Data streaming : 
+   └─> using kafka Streaming
 
-4. Local Training
+5. Local Training using Flink
    └─> trains models to models/local/
 
-5. Federated Aggregation
+6. Federated Aggregation 
    └─> creates global model in models/global/
 
-6. Analytics (requires TimescaleDB)
+7. Analytics (requires TimescaleDB)
    └─> stores in TimescaleDB + generates report
 
-7. Visualization
+8. Visualization
    └─> creates dashboard PNG
 ```
