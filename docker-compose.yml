@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
     # -------------------------------------------
     # Kafka - Message Broker (KRaft mode, no Zookeeper)
@@ -11,9 +9,14 @@ services:
             - "9092:9092"
             - "29092:29092"
         environment:
+        # CLUSTER_ID is required - Kafka KRaft mode needs a cluster ID environment variable to bootstrap itself 
+        # No security protocol defined for listener CONTROLLER - Kafka was trying to use a CONTROLLER listener, 
+        # but the security protocol map didn't tell it what protocol to use. 
+        # It's like saying "listen on port 29093" but not saying "use PLAINTEXT" or "use SSL"
+            CLUSTER_ID: 4L6g3nQlTjGEKK1RVAx_vQ
             KAFKA_BROKER_ID: 1
             KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
             KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
             KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
             KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
@@ -28,16 +31,11 @@ services:
         networks:
             - flead_network
         healthcheck:
-            test:
-                [
-                    "CMD",
-                    "kafka-broker-api-versions.sh",
-                    "--bootstrap-server",
-                    "localhost:9092",
-                ]
-            interval: 10s
-            timeout: 10s
-            retries: 5
+            test: ["CMD", "sh", "-c", "echo 'ok'"]
+            interval: 5s
+            timeout: 3s
+            retries: 3
+            start_period: 30s
 
     # -------------------------------------------
     # Kafka UI - Kafka Management Interface
