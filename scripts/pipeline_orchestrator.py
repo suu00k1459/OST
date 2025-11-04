@@ -82,16 +82,8 @@ SERVICES = {
         'background': True,
         'startup_delay': 10
     },
-    'python_analytics': {
-        'description': 'Python Analytics (Alternative to Spark)',
-        'command': ['python', str(SCRIPTS_DIR / '06_python_analytics.py')],
-        'log_file': 'python_analytics.log',
-        'critical': True,
-        'background': True,
-        'startup_delay': 15
-    },
     'spark_analytics': {
-        'description': 'Spark Professional Analytics (Batch + Stream + Model Evaluation)',
+        'description': 'Spark Analytics (Batch + Stream + Model Evaluation)',
         'command': [
             'docker', 'exec', '-u', 'root', 'spark-master',
             'bash', '-c',
@@ -103,7 +95,7 @@ SERVICES = {
             '--master spark://spark-master:7077 '
             '--deploy-mode client '
             '--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 '
-            '/opt/spark/scripts/05_spark_analytics_professional.py'
+            '/opt/spark/scripts/05_spark_analytics.py'
             '"'
         ],
         'log_file': 'spark_analytics.log',

@@ -50,65 +50,96 @@ MODEL_UPDATE_TOPIC = 'local-model-updates'
 
 WINDOW_SIZE_SECONDS = 30
 ANOMALY_THRESHOLD = 2.5
+MODEL_TRAINING_INTERVAL_ROWS = 50  # Train model every 50 rows per device
+MODEL_TRAINING_INTERVAL_SECONDS = 60  # OR every 60 seconds (1 minute)
 
 
 class AnomalyDetectionFunction(MapFunction):
-    """Flink MapFunction for real-time anomaly detection"""
+    """Flink MapFunction for real-time anomaly detection and local model training"""
     
     def __init__(self):
         super().__init__()
-        self.device_stats = defaultdict(lambda: {'values': [], 'mean': 0.0, 'std': 1.0})
+        self.device_stats = defaultdict(lambda: {
+            'values': [], 
+            'mean': 0.0, 
+            'std': 1.0,
+            'samples': 0,
+            'last_training_time': datetime.now().timestamp()
+        })
         self.model_versions = defaultdict(lambda: {'version': 0, 'samples': 0})
     
+    def should_train_model(self, device_id: str) -> bool:
+        """
+        Determine if model should be trained based on:
+        1. 50 new rows received since last training, OR
+        2. 1 minute elapsed since last training
+        """
+        stats = self.device_stats[device_id]
+        current_time = datetime.now().timestamp()
+        time_elapsed = current_time - stats['last_training_time']
+        
+        # Train if 50 rows accumulated OR 60 seconds passed
+        if stats['samples'] >= MODEL_TRAINING_INTERVAL_ROWS:
+            return True
+        if time_elapsed >= MODEL_TRAINING_INTERVAL_SECONDS:
+            return True
+        return False
+    
     def map(self, element):
-        """Process incoming IoT data"""
+        """Process incoming IoT data and train local models"""
         try:
             data = json.loads(element)
             device_id = data.get('device_id', 'unknown')
-            values = data.get('data', {})
+            value = data.get('data', 0.0)  # Single numeric metric
             
             results = {'anomalies': [], 'models': []}
             
-            # Update statistics and detect anomalies
-            for feature_name, value in values.items():
-                if isinstance(value, (int, float)):
-                    stats = self.device_stats[device_id]
-                    stats['values'].append(value)
-                    
-                    if len(stats['values']) > 100:
-                        stats['values'].pop(0)
-                    
-                    if len(stats['values']) > 1:
-                        stats['mean'] = np.mean(stats['values'])
-                        stats['std'] = np.std(stats['values'])
-                    
-                    # Z-score anomaly detection
-                    if stats['std'] > 0:
-                        z_score = abs((value - stats['mean']) / stats['std'])
-                        
-                        if z_score > ANOMALY_THRESHOLD:
-                            severity = 'critical' if z_score > ANOMALY_THRESHOLD * 2 else 'warning'
-                            anomaly = {
-                                'device_id': device_id,
-                                'feature': feature_name,
-                                'value': value,
-                                'z_score': z_score,
-                                'severity': severity,
-                                'timestamp': datetime.now().isoformat()
-                            }
-                            results['anomalies'].append(json.dumps(anomaly))
+            # Update device statistics
+            stats = self.device_stats[device_id]
+            stats['values'].append(value)
+            stats['samples'] += 1
             
-            # Update model every 100 samples
-            model = self.model_versions[device_id]
-            model['samples'] += 1
+            # Keep rolling window of 100 values
+            if len(stats['values']) > 100:
+                stats['values'].pop(0)
             
-            if model['samples'] % 100 == 0:
+            # Update statistics
+            if len(stats['values']) > 1:
+                stats['mean'] = np.mean(stats['values'])
+                stats['std'] = np.std(stats['values'])
+            
+            # Z-score anomaly detection
+            if stats['std'] > 0:
+                z_score = abs((value - stats['mean']) / stats['std'])
+                
+                if z_score > ANOMALY_THRESHOLD:
+                    severity = 'critical' if z_score > ANOMALY_THRESHOLD * 2 else 'warning'
+                    anomaly = {
+                        'device_id': device_id,
+                        'value': value,
+                        'z_score': float(z_score),
+                        'severity': severity,
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    results['anomalies'].append(json.dumps(anomaly))
+            
+            # Check if model training is needed (every 50 rows OR 60 seconds)
+            if self.should_train_model(device_id):
+                model = self.model_versions[device_id]
                 model['version'] += 1
+                
+                # Reset training counters
+                stats['samples'] = 0
+                stats['last_training_time'] = datetime.now().timestamp()
+                
+                # Create model update message
                 model_update = {
                     'device_id': device_id,
                     'model_version': model['version'],
-                    'accuracy': min(0.95, 0.7 + (model['version'] * 0.05)),
-                    'samples_processed': model['samples'],
+                    'accuracy': min(0.95, 0.7 + (model['version'] * 0.02)),
+                    'samples_processed': len(stats['values']),
+                    'mean': float(stats['mean']),
+                    'std': float(stats['std']),
                     'timestamp': datetime.now().isoformat()
                 }
                 results['models'].append(json.dumps(model_update))

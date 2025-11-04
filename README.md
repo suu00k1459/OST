@@ -84,5 +84,27 @@ Password: password
    └─> Batch and Strean analytics and stores in TimescaleDB + generates report
 
 8. Visualization
-   └─> creates dashboard 
+   └─>  dashboard  using graphana 
 ```
+---
+
+
+## Local Training (Flink):
+
+ Algorithm: Z-score anomaly detection
+ Model: Rolling statistics (mean, std)
+ Training Trigger: Every 50 rows OR 60 seconds
+ Update: Send statistics to Federated Server
+## Global Aggregation (Federated Server):
+
+ Algorithm: FedAvg (Federated Averaging)
+ Formula: GlobalAccuracy = Σ(LocalAccuracy × Samples) / Σ(Samples)
+ Trigger: After 20 device updates
+ Output: New global model version
+
+## Why Statistical (Not Neural Networks)?
+
+ Fast: Real-time processing
+ Lightweight: Works on edge devices
+ Scalable: Handles 2000+ devices
+ Effective: Z-score proven for IoT anomaly detection

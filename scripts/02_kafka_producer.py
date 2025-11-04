@@ -19,6 +19,7 @@ Examples:
 import json
 import time
 import argparse
+import random
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Generator, Optional
@@ -188,14 +189,14 @@ class EdgeIIoTProducer:
     
     def stream_from_directory(self, directory: str) -> Generator:
         """
-        Stream data from all device files in directory
-        Repeats from beginning if repeat is enabled
+        Stream data from all device files in directory with random device selection
+        At each iteration, randomly selects a device from the pool of available devices
         
         Args:
             directory: Path to directory containing device_*.csv files
             
         Yields:
-            Kafka messages
+            Kafka messages with random device_id rotation
         """
         device_files = self.discover_device_files(directory)
         
@@ -203,29 +204,73 @@ class EdgeIIoTProducer:
             logger.error(f"✗ No CSV files found in {directory}")
             return
         
-        cycle = 1
+        total_devices = len(device_files)
+        logger.info(f"✓ Discovered {total_devices} device files for random streaming")
+        
+        # Load all device dataframes into memory for random access
+        device_dataframes = {}
+        for device_file in device_files:
+            device_path = Path(device_file)
+            device_id = device_path.stem  # e.g., "device_0" -> keep as is
+            try:
+                df = pd.read_csv(device_file)
+                device_dataframes[device_id] = df
+                logger.info(f"  Loaded {device_path.name}: {len(df)} rows")
+            except Exception as e:
+                logger.error(f"  Failed to load {device_path.name}: {e}")
+        
+        if not device_dataframes:
+            logger.error(f"✗ No valid device data loaded")
+            return
+        
+        logger.info(f"✓ Ready to stream from {len(device_dataframes)} devices with random selection")
+        
+        # Stream continuously with random device selection
+        iteration = 0
         while True:
-            if cycle > 1:
-                logger.info(f"\n{'='*70}")
-                logger.info(f"✓ Restarting cycle {cycle}")
-                logger.info(f"✓ Streaming from {len(device_files)} device file(s)")
-                logger.info(f"{'='*70}\n")
-                self.cycle_count = cycle
-            else:
-                logger.info(f"✓ Streaming from {len(device_files)} device file(s)")
+            iteration += 1
             
-            for device_file in device_files:
-                if cycle == 1:
-                    logger.info(f"✓ Starting stream from {Path(device_file).name}")
-                
-                for message in self.stream_from_csv(device_file):
-                    yield message
+            # Randomly select a device
+            device_id = random.choice(list(device_dataframes.keys()))
+            df = device_dataframes[device_id]
             
-            # If repeat is disabled, exit after one pass
-            if not self.repeat:
+            # Randomly select a row from that device's data
+            row_idx = random.randint(0, len(df) - 1)
+            row = df.iloc[row_idx]
+            
+            record = row.to_dict()
+            
+            # Convert to JSON-serializable types
+            for key, value in list(record.items()):
+                if pd.isna(value):
+                    record[key] = None
+                elif isinstance(value, (np.integer, np.floating)):
+                    record[key] = float(value)
+                elif isinstance(value, np.bool_):
+                    record[key] = bool(value)
+            
+            # Extract meaningful metric
+            metric_value = record.get('tcp.ack', 0.0)
+            if metric_value is None or metric_value == 0.0:
+                metric_value = record.get('tcp.seq', record.get('tcp.srcport', 0.0))
+            
+            message = {
+                'device_id': device_id,  # Use the actual device ID
+                'timestamp': datetime.now().isoformat(),
+                'data': float(metric_value) if metric_value is not None else 0.0,
+                'raw_features': record
+            }
+            
+            yield message
+            
+            # Log progress every 100 iterations
+            if iteration % 100 == 0:
+                logger.info(f"Streamed {iteration} messages from random devices")
+            
+            # If repeat is disabled, stop after reasonable number of samples
+            if not self.repeat and iteration >= total_devices * 10:
+                logger.info(f"✓ Completed {iteration} iterations without repeat")
                 break
-            
-            cycle += 1
     
     def send_message(self, message: Dict):
         """Send message to Kafka topic"""

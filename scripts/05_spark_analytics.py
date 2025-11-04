@@ -475,7 +475,7 @@ class SparkAnalyticsEngine:
     
     def evaluate_with_global_model(self, batch_results: List[Dict]):
         """Evaluate predictions using global federated model"""
-        logger.info("🤖 Evaluating results with global model...")
+        logger.info(" Evaluating results with global model...")
         
         evaluations = []
         for result in batch_results:
