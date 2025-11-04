@@ -286,7 +286,8 @@ class PipelineOrchestrator:
             'kafka_producer',         # Stage 2: Stream data (HOST)
             'flink_training',         # Stage 3: Real-time ML (Docker: Flink)
             'federated_aggregation',  # Stage 4: Model aggregation (HOST with Docker network)
-            'spark_analytics'         # Stage 5: Batch analytics (Docker: Spark)
+            'spark_analytics',        # Stage 5: Batch analytics (Docker: Spark)
+            'device_viewer'           # Stage 6: Web interface (HOST)
         ]
         
         # NOTE: Services now properly submitted to Docker containers
