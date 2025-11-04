@@ -80,9 +80,9 @@ Password: password
 6. Federated Aggregation
    └─> creates global model in models/global/
 
-7. Analytics (requires TimescaleDB)
-   └─> stores in TimescaleDB + generates report
+7. Analytics 
+   └─> Batch and Strean analytics and stores in TimescaleDB + generates report
 
 8. Visualization
-   └─> creates dashboard PNG
+   └─> creates dashboard 
 ```
