@@ -26,7 +26,7 @@ grafana-postgresql-datasource
 
 **Connection:**
 
--   Host URL: `localhost:5432`
+-   Host URL: `timescaledb:5432` ⚠️ **IMPORTANT: Use `timescaledb`, NOT `localhost`**
 -   Database name: `flead`
 
 **Authentication:**
@@ -135,9 +135,13 @@ SELECT * FROM federated_models ORDER BY created_at DESC;
 
 ## Troubleshooting
 
-**"Database Connection Failed"?**
+**"Database Connection Failed" or "dial tcp connection refused"?**
 
-Try changing Host URL from `localhost:5432` to `timescaledb:5432`
+You're using `localhost:5432` instead of `timescaledb:5432`. Go back to your data source settings and change the Host URL to `timescaledb:5432`.
+
+**Why `timescaledb` and not `localhost`?**
+
+Because Grafana runs inside a Docker container. From inside the container, `localhost` means the container itself, not your computer. Use the Docker container name `timescaledb` to connect to the database container.
 
 **No data in queries?**
 
