@@ -5,6 +5,7 @@ Complete startup and coordination of all pipeline components:
 2. Flink Local Training → detects anomalies per device, trains local models
 3. Federated Aggregation → aggregates models to create global model
 4. Spark Batch Analytics → long-term trend analysis and maintenance signals
+5. Device Viewer Website → web interface for device exploration
 """
 
 import subprocess
@@ -14,6 +15,7 @@ import sys
 import os
 import signal
 import threading
+import webbrowser
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -62,16 +64,24 @@ SERVICES = {
         'command': [
             'docker', 'exec', 'flink-jobmanager',
             'bash', '-c',
+            # Check if JARs exist, download if missing
+            'if [ ! -f /opt/flink/lib/flink-connector-kafka-3.0.2-1.18.jar ]; then '
             'cd /opt/flink/lib && '
-            'rm -f flink-*connector-kafka*.jar kafka-clients*.jar && '
             'wget -q https://repo1.maven.org/maven2/org/apache/flink/flink-connector-kafka/3.0.2-1.18/flink-connector-kafka-3.0.2-1.18.jar && '
-            'wget -q https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.0/kafka-clients-3.4.0.jar && '
-            'cd /opt/flink && flink run -py /opt/flink/scripts/03_flink_local_training.py -d'
+            'wget -q https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.0/kafka-clients-3.4.0.jar; '
+            'fi && '
+            # Check if job already running
+            'RUNNING_JOBS=$(flink list 2>/dev/null | grep RUNNING | grep -c "Local Training Job" || echo 0) && '
+            'if [ "$RUNNING_JOBS" -eq "0" ]; then '
+            'cd /opt/flink && flink run -py /opt/flink/scripts/03_flink_local_training.py -d; '
+            'else '
+            'echo "Flink job already running, skipping submission"; '
+            'fi'
         ],
         'log_file': 'flink_training.log',
         'critical': True,
-        'background': True,
-        'startup_delay': 10,
+        'background': False,  # Changed to foreground so we can check result
+        'startup_delay': 5,
         'requires_docker': True
     },
     'federated_aggregation': {
@@ -103,6 +113,14 @@ SERVICES = {
         'background': True,
         'startup_delay': 20,
         'requires_docker': True
+    },
+    'device_viewer': {
+        'description': 'Device Viewer Website (Flask Web Interface)',
+        'command': ['python', str(ROOT_DIR / 'website' / 'app.py')],
+        'log_file': 'device_viewer.log',
+        'critical': False,  # Not critical for core pipeline
+        'background': True,
+        'startup_delay': 3
     }
 }
 
@@ -396,6 +414,34 @@ class PipelineOrchestrator:
         logger.info("Cleanup complete")
 
 
+def launch_web_interfaces():
+    """Launch web browsers for all UI interfaces"""
+    logger.info("\n" + "=" * 70)
+    logger.info("LAUNCHING WEB INTERFACES")
+    logger.info("=" * 70)
+    
+    # Wait a moment to ensure services are ready
+    time.sleep(2)
+    
+    # URLs to open
+    urls = [
+        ('Device Viewer Website', 'http://localhost:8082'),
+        ('Kafka UI', 'http://localhost:8081'),
+        ('Grafana Dashboard', 'http://localhost:3001'),
+        ('Flink Dashboard', 'http://localhost:8161')
+    ]
+    
+    for name, url in urls:
+        try:
+            logger.info(f"Opening {name}: {url}")
+            webbrowser.open(url, new=2)  # new=2 opens in a new tab if possible
+            time.sleep(1)  # Small delay between launches
+        except Exception as e:
+            logger.warning(f"Could not open {name}: {e}")
+    
+    logger.info("=" * 70)
+
+
 def main():
     """Main orchestrator"""
     orchestrator = PipelineOrchestrator()
@@ -407,7 +453,11 @@ def main():
             orchestrator.show_pipeline_status()
             
             logger.info("\nPipeline started successfully!")
-            logger.info("Press Ctrl+C to stop\n")
+            
+            # Launch web interfaces in browser
+            launch_web_interfaces()
+            
+            logger.info("\nPress Ctrl+C to stop\n")
             
             # Keep orchestrator running
             while True:

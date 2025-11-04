@@ -148,5 +148,5 @@ def device(filename):
 
 
 if __name__ == '__main__':
-    # Run on 0.0.0.0 so it's reachable from other machines if needed; debug True for development
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    # Run on 0.0.0.0 so it's reachable from other machines if needed
+    app.run(host='0.0.0.0', port=8082, debug=False)  # Port 8082 to avoid conflicts
