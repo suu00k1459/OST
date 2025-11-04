@@ -25,12 +25,6 @@ These are supporting scripts, executed as needed, not part of main pipeline:
 -   **When**: Used by other services
 -   **Functions**: Model persistence, versioning, loading
 
-#### `00_preprocess.py`
-
--   **Purpose**: Prepare raw data for processing
--   **When**: Data preprocessing step
--   **Input**: Raw CSV data from Kaggle
--   **Output**: Processed data in `data/processed/`
 
 ---
 
