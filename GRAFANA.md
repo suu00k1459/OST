@@ -56,10 +56,19 @@ You should see: ✅ "Database Connection OK"
 3. Run this query:
 
 ```sql
-SELECT * FROM anomalies ORDER BY detected_at DESC LIMIT 10;
+SELECT * FROM federated_metrics ORDER BY ts DESC LIMIT 10;
 ```
 
-If you see data, it works!
+**⚠️ IMPORTANT: If you get "relation does not exist" error:**
+
+This means the Flink job isn't running. You need to start the pipeline first:
+
+```powershell
+cd "d:\OLD DESKTOP\Current Projects\OST-2"
+python scripts/pipeline_orchestrator.py
+```
+
+Wait 2-3 minutes for data to start flowing, then try the query again.
 
 ## Step 5: Create a Dashboard
 
@@ -78,53 +87,58 @@ If you see data, it works!
 
 ## Useful Queries
 
-**Count total anomalies:**
+**Count total metrics:**
 
 ```sql
-SELECT count(*) FROM anomalies;
+SELECT count(*) FROM federated_metrics;
 ```
 
-**Anomalies in last hour:**
+**Recent federated training metrics:**
 
 ```sql
-SELECT count(*) FROM anomalies
-WHERE detected_at > NOW() - INTERVAL '1 hour';
+SELECT ts, round, metric, value 
+FROM federated_metrics 
+WHERE ts > NOW() - INTERVAL '1 hour'
+ORDER BY ts DESC;
 ```
 
-**Anomalies over time (graph):**
+**Metrics over time (graph):**
 
 ```sql
-SELECT
-  detected_at AS time,
-  count(*)
-FROM anomalies
-WHERE detected_at > NOW() - INTERVAL '1 hour'
-GROUP BY time
+SELECT 
+  ts AS time,
+  metric,
+  value
+FROM federated_metrics
+WHERE ts > NOW() - INTERVAL '1 hour'
 ORDER BY time;
 ```
 
-**Top 10 devices with most anomalies:**
+**Average metric values by type:**
 
 ```sql
-SELECT
-  device_id,
-  count(*) as anomalies
-FROM anomalies
-GROUP BY device_id
-ORDER BY count(*) DESC
+SELECT 
+  metric,
+  avg(value) as avg_value,
+  count(*) as count
+FROM federated_metrics
+GROUP BY metric
+ORDER BY count DESC;
+```
+
+**Recent batch analysis results:**
+
+```sql
+SELECT * FROM batch_analysis_results 
+ORDER BY created_at DESC 
 LIMIT 10;
 ```
 
-**Average model accuracy:**
+**Dashboard metrics:**
 
 ```sql
-SELECT avg(accuracy) FROM local_models;
-```
-
-**Global models:**
-
-```sql
-SELECT * FROM federated_models ORDER BY created_at DESC;
+SELECT * FROM dashboard_metrics 
+ORDER BY updated_at DESC;
 ```
 
 ## Enable Auto-Refresh
