@@ -43,9 +43,9 @@ logger = logging.getLogger(__name__)
 DB_CONFIG = {
     'host': 'timescaledb',
     'port': 5432,
-    'database': 'flead_db',
-    'user': 'postgres',
-    'password': 'postgres'
+    'database': 'flead',
+    'user': 'flead',
+    'password': 'password'
 }
 
 # Kafka (for streaming)

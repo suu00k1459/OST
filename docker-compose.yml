@@ -105,9 +105,12 @@ services:
 
     # -------------------------------------------
     # Apache Flink - Stream Processing (Local Models)
+    # NOTE: Custom build with Python and PyFlink installed
     # -------------------------------------------
     flink-jobmanager:
-        image: flink:1.18-java11
+        build:
+            context: .
+            dockerfile: Dockerfile.flink
         container_name: flink-jobmanager
         command: jobmanager
         ports:
@@ -121,6 +124,8 @@ services:
             - JOB_MANAGER_MEMORY_PROCESS_SIZE=1024m
         volumes:
             - flink_jobmanager_data:/flink/data
+            - ./scripts:/opt/flink/scripts
+            - ./data:/opt/flink/data
         networks:
             - flead_network
         depends_on:
@@ -131,9 +136,12 @@ services:
             interval: 10s
             timeout: 5s
             retries: 5
+            start_period: 60s
 
     flink-taskmanager:
-        image: flink:1.18-java11
+        build:
+            context: .
+            dockerfile: Dockerfile.flink
         container_name: flink-taskmanager
         command: taskmanager
         depends_on:
@@ -149,53 +157,68 @@ services:
             - TASK_MANAGER_MEMORY_PROCESS_SIZE=1024m
         volumes:
             - flink_taskmanager_data:/flink/data
+            - ./scripts:/opt/flink/scripts
+            - ./data:/opt/flink/data
         networks:
             - flead_network
 
     # -------------------------------------------
-    # Apache Spark - Batch Analytics (TEMPORARILY DISABLED - use Python alternative)
-    # Run: python scripts/05_spark_analytics_professional.py
+    # Apache Spark - Batch Analytics (Custom build with packages installed)
     # -------------------------------------------
-    # spark-master:
-    #     image: docker.io/bitnami/spark:3.3.4
-    #     container_name: spark-master
-    #     environment:
-    #         - SPARK_MODE=master
-    #         - SPARK_RPC_AUTHENTICATION_ENABLED=no
-    #         - SPARK_RPC_ENCRYPTION_ENABLED=no
-    #         - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-    #         - SPARK_SSL_ENABLED=no
-    #     ports:
-    #         - "8086:8080"
-    #         - "7077:7077"
-    #     volumes:
-    #         - spark_master_data:/spark/data
-    #     networks:
-    #         - flead_network
-    #     depends_on:
-    #         timescaledb:
-    #             condition: service_healthy
-    #
-    # spark-worker-1:
-    #     image: docker.io/bitnami/spark:3.3.4
-    #     container_name: spark-worker-1
-    #     environment:
-    #         - SPARK_MODE=worker
-    #         - SPARK_MASTER_URL=spark://spark-master:7077
-    #         - SPARK_WORKER_MEMORY=1G
-    #         - SPARK_WORKER_CORES=2
-    #         - SPARK_RPC_AUTHENTICATION_ENABLED=no
-    #         - SPARK_RPC_ENCRYPTION_ENABLED=no
-    #         - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-    #         - SPARK_SSL_ENABLED=no
-    #     ports:
-    #         - "8087:8081"
-    #     volumes:
-    #         - spark_worker_data:/spark/data
-    #     networks:
-    #         - flead_network
-    #     depends_on:
-    #         - spark-master
+    spark-master:
+        build:
+            context: .
+            dockerfile: Dockerfile.spark
+        container_name: spark-master
+        command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+        environment:
+            - SPARK_NO_DAEMONIZE=1
+            - SPARK_MASTER_HOST=spark-master
+            - SPARK_MASTER_PORT=7077
+            - SPARK_MASTER_WEBUI_PORT=8080
+        ports:
+            - "8086:8080"
+            - "7077:7077"
+        volumes:
+            - spark_master_data:/opt/spark/work
+            - ./scripts:/opt/spark/scripts
+            - ./data:/opt/spark/data
+        networks:
+            - flead_network
+        depends_on:
+            kafka:
+                condition: service_healthy
+            timescaledb:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 60s
+
+    spark-worker-1:
+        build:
+            context: .
+            dockerfile: Dockerfile.spark
+        container_name: spark-worker-1
+        command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+        environment:
+            - SPARK_NO_DAEMONIZE=1
+            - SPARK_WORKER_CORES=2
+            - SPARK_WORKER_MEMORY=1G
+            - SPARK_MASTER=spark://spark-master:7077
+        ports:
+            - "8087:8081"
+        volumes:
+            - spark_worker_data:/opt/spark/work
+            - ./scripts:/opt/spark/scripts
+            - ./data:/opt/spark/data
+        networks:
+            - flead_network
+        depends_on:
+            spark-master:
+                condition: service_healthy
 
 volumes:
     kafka_data:

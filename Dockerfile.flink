@@ -1,0 +1,19 @@
+FROM flink:1.18-java11
+
+# Switch to root to install packages
+USER root
+
+# Install Python and pip
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip python3-dev && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+RUN pip3 install --no-cache-dir apache-flink kafka-python
+
+# Switch back to flink user
+USER flink
+
+# Use the standard entry point
+ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -59,27 +59,53 @@ SERVICES = {
     },
     'flink_training': {
         'description': 'Flink Local Model Training (Real-time Streaming)',
-        'command': ['python', str(SCRIPTS_DIR / '03_flink_local_training.py')],
+        'command': [
+            'docker', 'exec', 'flink-jobmanager',
+            'bash', '-c',
+            # Download Kafka connector JAR before running
+            'cd /opt/flink && wget -q https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.0.2-1.18/flink-sql-connector-kafka-3.0.2-1.18.jar -P lib/ 2>/dev/null || true && '
+            'flink run -py /opt/flink/scripts/03_flink_local_training.py -d'
+        ],
         'log_file': 'flink_training.log',
-        'critical': False,
+        'critical': True,
         'background': True,
-        'startup_delay': 10
+        'startup_delay': 10,
+        'requires_docker': True
     },
     'federated_aggregation': {
         'description': 'Federated Aggregation (Global Model)',
         'command': ['python', str(SCRIPTS_DIR / '04_federated_aggregation.py')],
         'log_file': 'federated_aggregation.log',
-        'critical': False,
+        'critical': True,
         'background': True,
         'startup_delay': 10
     },
+    'python_analytics': {
+        'description': 'Python Analytics (Alternative to Spark)',
+        'command': ['python', str(SCRIPTS_DIR / '06_python_analytics.py')],
+        'log_file': 'python_analytics.log',
+        'critical': True,
+        'background': True,
+        'startup_delay': 15
+    },
     'spark_analytics': {
         'description': 'Spark Professional Analytics (Batch + Stream + Model Evaluation)',
-        'command': ['python', str(SCRIPTS_DIR / '05_spark_analytics_professional.py')],
+        'command': [
+            'docker', 'exec', 'spark-master',
+            'bash', '-c',
+            # Create ivy cache directory with permissions
+            'mkdir -p /home/spark/.ivy2/cache && chmod -R 777 /home/spark/.ivy2 && '
+            '/opt/spark/bin/spark-submit '
+            '--master spark://spark-master:7077 '
+            '--deploy-mode client '
+            '--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 '
+            '/opt/spark/scripts/05_spark_analytics_professional.py'
+        ],
         'log_file': 'spark_analytics.log',
-        'critical': False,
+        'critical': True,
         'background': True,
-        'startup_delay': 20
+        'startup_delay': 20,
+        'requires_docker': True
     }
 }
 
@@ -109,7 +135,7 @@ class PipelineOrchestrator:
     def check_docker_services(self) -> bool:
         """Check if Docker services are running"""
         logger.info("Checking Docker services...")
-        required_services = ['kafka', 'timescaledb', 'flink-jobmanager']
+        required_services = ['kafka', 'timescaledb', 'flink-jobmanager', 'spark-master']
         
         try:
             result = subprocess.run(
@@ -130,7 +156,6 @@ class PipelineOrchestrator:
                 return False
             
             logger.info(f"All required Docker services running: {', '.join(required_services)}")
-            logger.info("Note: Spark temporarily disabled, using Python analytics instead")
             return True
         
         except Exception as e:
@@ -242,12 +267,18 @@ class PipelineOrchestrator:
         
         # Start services in order
         startup_order = [
-            'kafka_topics',
-            'kafka_producer',
-            # Note: spark_analytics requires Java (available in Docker)
-            # For Docker-based analytics, submit jobs directly to Flink/Spark containers
-            # Currently running in producer-only mode for data streaming
+            'kafka_topics',           # Stage 1: Create Kafka topics (HOST)
+            'kafka_producer',         # Stage 2: Stream data (HOST)
+            'flink_training',         # Stage 3: Real-time ML (Docker: Flink)
+            'federated_aggregation',  # Stage 4: Model aggregation (HOST with Docker network)
+            'spark_analytics'         # Stage 5: Batch analytics (Docker: Spark)
         ]
+        
+        # NOTE: Services now properly submitted to Docker containers
+        # - kafka_topics/producer: Run on HOST (can connect to localhost:9092)
+        # - flink_training: Submitted to flink-jobmanager container via docker exec
+        # - spark_analytics: Submitted to spark-master container via docker exec
+        # - federated_aggregation: Runs on HOST but needs Docker network (to be fixed)
         
         success_count = 0
         
@@ -257,21 +288,26 @@ class PipelineOrchestrator:
             
             config = SERVICES[service_name]
             
-            # Skip optional services if needed
-            if not config.get('critical', True) and len(self.failed_services) > 0:
-                logger.warning(f"Skipping optional service: {config['description']}")
-                continue
+            # ALL SERVICES ARE REQUIRED - DO NOT SKIP
+            # Continue starting all services even if one fails
+            # This allows us to see all errors at once
             
             if self.start_service(service_name, config):
                 success_count += 1
             else:
                 self.failed_services.append(service_name)
-                
-                if config.get('critical', True):
-                    logger.error("\nCritical service failed, stopping pipeline")
-                    break
+                logger.error(f"Service failed but continuing with remaining services...")
         
-        return len(self.failed_services) == 0
+        # Report overall status
+        if len(self.failed_services) > 0:
+            logger.error(f"\n{'='*70}")
+            logger.error(f"PIPELINE STARTUP INCOMPLETE")
+            logger.error(f"{'='*70}")
+            logger.error(f"Failed services: {', '.join(self.failed_services)}")
+            logger.error(f"Successful services: {success_count}/{len(startup_order)}")
+            return False
+        
+        return True
     
     def show_pipeline_status(self):
         """Display pipeline status"""
