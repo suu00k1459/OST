@@ -22,9 +22,11 @@ import sys
 # Try to import Flink (will be available in Docker container)
 try:
     from pyflink.datastream import StreamExecutionEnvironment
-    from pyflink.datastream.functions import ProcessFunction
+    from pyflink.datastream.functions import MapFunction
     from pyflink.common.serialization import SimpleStringSchema
-    from pyflink.datastream.connectors.kafka import FlinkKafkaConsumer, FlinkKafkaProducer
+    from pyflink.datastream.connectors.kafka import KafkaSource, KafkaOffsetsInitializer, KafkaSink, KafkaRecordSerializationSchema
+    from pyflink.common.typeinfo import Types
+    from pyflink.common import WatermarkStrategy
     FLINK_AVAILABLE = True
 except ImportError:
     FLINK_AVAILABLE = False
@@ -50,20 +52,22 @@ WINDOW_SIZE_SECONDS = 30
 ANOMALY_THRESHOLD = 2.5
 
 
-class AnomalyDetectionFunction(ProcessFunction):
-    """Flink ProcessFunction for real-time anomaly detection"""
+class AnomalyDetectionFunction(MapFunction):
+    """Flink MapFunction for real-time anomaly detection"""
     
     def __init__(self):
         super().__init__()
         self.device_stats = defaultdict(lambda: {'values': [], 'mean': 0.0, 'std': 1.0})
         self.model_versions = defaultdict(lambda: {'version': 0, 'samples': 0})
     
-    def process_element(self, element, ctx):
+    def map(self, element):
         """Process incoming IoT data"""
         try:
             data = json.loads(element)
             device_id = data.get('device_id', 'unknown')
             values = data.get('data', {})
+            
+            results = {'anomalies': [], 'models': []}
             
             # Update statistics and detect anomalies
             for feature_name, value in values.items():
@@ -92,7 +96,7 @@ class AnomalyDetectionFunction(ProcessFunction):
                                 'severity': severity,
                                 'timestamp': datetime.now().isoformat()
                             }
-                            yield ('anomaly', json.dumps(anomaly))
+                            results['anomalies'].append(json.dumps(anomaly))
             
             # Update model every 100 samples
             model = self.model_versions[device_id]
@@ -107,10 +111,13 @@ class AnomalyDetectionFunction(ProcessFunction):
                     'samples_processed': model['samples'],
                     'timestamp': datetime.now().isoformat()
                 }
-                yield ('model', json.dumps(model_update))
+                results['models'].append(json.dumps(model_update))
+            
+            return json.dumps(results)
         
         except Exception as e:
             logger.error(f"Error: {e}")
+            return json.dumps({'anomalies': [], 'models': []})
 
 
 def main():
@@ -125,33 +132,62 @@ def main():
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(4)
     
-    # Source: Kafka
-    kafka_consumer = FlinkKafkaConsumer(
-        INPUT_TOPIC,
-        SimpleStringSchema(),
-        {'bootstrap.servers': KAFKA_BROKER, 'group.id': 'flink-training'}
+    # Add Kafka connector JARs to classpath
+    env.add_jars("file:///opt/flink/lib/flink-connector-kafka-3.0.2-1.18.jar",
+                 "file:///opt/flink/lib/kafka-clients-3.4.0.jar")
+    
+    # Kafka Source (new API for Flink 1.18+)
+    kafka_source = KafkaSource.builder() \
+        .set_bootstrap_servers(KAFKA_BROKER) \
+        .set_topics(INPUT_TOPIC) \
+        .set_group_id('flink-training') \
+        .set_starting_offsets(KafkaOffsetsInitializer.latest()) \
+        .set_value_only_deserializer(SimpleStringSchema()) \
+        .build()
+    
+    # Process stream with WatermarkStrategy
+    stream = env.from_source(
+        kafka_source,
+        WatermarkStrategy.no_watermarks(),
+        "kafka-source"
     )
+    processed = stream.map(AnomalyDetectionFunction(), output_type=Types.STRING())
     
-    # Process
-    stream = env.add_source(kafka_consumer)
-    processed = stream.process(AnomalyDetectionFunction())
+    # Parse results and split streams
+    def extract_anomalies(element):
+        data = json.loads(element)
+        return '\n'.join(data.get('anomalies', []))
     
-    # Split outputs
-    anomalies = processed.filter(lambda x: x[0] == 'anomaly').map(lambda x: x[1])
-    models = processed.filter(lambda x: x[0] == 'model').map(lambda x: x[1])
+    def extract_models(element):
+        data = json.loads(element)
+        return '\n'.join(data.get('models', []))
     
-    # Sink: Kafka
-    anomalies.add_sink(FlinkKafkaProducer(
-        ANOMALY_OUTPUT_TOPIC,
-        SimpleStringSchema(),
-        {'bootstrap.servers': KAFKA_BROKER}
-    ))
+    anomalies = processed.map(extract_anomalies, output_type=Types.STRING()).filter(lambda x: len(x) > 0)
+    models = processed.map(extract_models, output_type=Types.STRING()).filter(lambda x: len(x) > 0)
     
-    models.add_sink(FlinkKafkaProducer(
-        MODEL_UPDATE_TOPIC,
-        SimpleStringSchema(),
-        {'bootstrap.servers': KAFKA_BROKER}
-    ))
+    # Kafka Sinks (new API for Flink 1.18+)
+    anomaly_sink = KafkaSink.builder() \
+        .set_bootstrap_servers(KAFKA_BROKER) \
+        .set_record_serializer(
+            KafkaRecordSerializationSchema.builder()
+                .set_topic(ANOMALY_OUTPUT_TOPIC)
+                .set_value_serialization_schema(SimpleStringSchema())
+                .build()
+        ) \
+        .build()
+    
+    model_sink = KafkaSink.builder() \
+        .set_bootstrap_servers(KAFKA_BROKER) \
+        .set_record_serializer(
+            KafkaRecordSerializationSchema.builder()
+                .set_topic(MODEL_UPDATE_TOPIC)
+                .set_value_serialization_schema(SimpleStringSchema())
+                .build()
+        ) \
+        .build()
+    
+    anomalies.sink_to(anomaly_sink)
+    models.sink_to(model_sink)
     
     env.execute("Local Training Job")
 

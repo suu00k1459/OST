@@ -345,46 +345,36 @@ class SparkAnalyticsEngine:
     # ========== BATCH ANALYSIS ==========
     
     def run_batch_analysis(self, window_hours: int = BATCH_WINDOW_HOURS):
-        """Execute batch analysis on historical data"""
-        logger.info(f"🔄 Starting batch analysis for last {window_hours} hours...")
+        """Execute batch analysis on historical CSV data"""
+        logger.info(f"🔄 Starting batch analysis on CSV files...")
         
         try:
-            # Read from Kafka (last N hours)
-            kafka_df = self.spark.readStream \
-                .format("kafka") \
-                .option("kafka.bootstrap.servers", KAFKA_BROKER) \
-                .option("subscribe", "edge-iiot-stream") \
-                .option("startingOffsets", "latest") \
-                .load()
+            # Read from CSV files in /opt/spark/data/processed
+            csv_path = "/opt/spark/data/processed/*.csv"
             
-            # Parse JSON
-            schema = StructType([
-                StructField("device_id", StringType()),
-                StructField("timestamp", StringType()),
-                StructField("data", StringType())
-            ])
+            # Read CSV data
+            df = self.spark.read \
+                .option("header", "true") \
+                .option("inferSchema", "true") \
+                .csv(csv_path)
             
-            parsed = kafka_df.select(
-                from_json(col("value").cast(StringType()), schema).alias("parsed")
-            ).select("parsed.*")
+            # Check if dataframe has data
+            if df.rdd.isEmpty():
+                logger.warning("⚠ No CSV data found for batch analysis")
+                return
             
-            # Add timestamp column
-            data = parsed.withColumn(
-                "event_time",
-                to_timestamp(col("timestamp"))
-            )
-            
-            # Daily aggregations
-            daily_agg = data.groupBy(
+            # Aggregate by device and date
+            daily_agg = df.groupBy(
                 col("device_id"),
-                date_format(col("event_time"), "yyyy-MM-dd").alias("date")
+                to_date(col("timestamp")).alias("analysis_date")
             ).agg(
-                avg(col("data")).alias("avg_value"),
-                spark_min(col("data")).alias("min_value"),
-                spark_max(col("data")).alias("max_value"),
-                stddev(col("data")).alias("stddev_value"),
+                avg(col("temperature")).alias("avg_value"),
+                spark_min(col("temperature")).alias("min_value"),
+                spark_max(col("temperature")).alias("max_value"),
+                stddev(col("temperature")).alias("stddev_value"),
                 count("*").alias("sample_count")
-            ).withColumn("metric_name", lit("sensor_reading"))
+            ).withColumn("metric_name", lit("temperature")) \
+             .withColumn("analysis_timestamp", spark_current_timestamp())
             
             logger.info("✓ Batch analysis completed")
             
@@ -422,11 +412,11 @@ class SparkAnalyticsEngine:
                 from_json(col("value").cast(StringType()), schema).alias("data")
             ).select("data.*")
             
-            # Add timestamp
+            # Add timestamp with watermark for late data
             stream_data = parsed.withColumn(
                 "event_time",
                 to_timestamp(col("timestamp"))
-            )
+            ).withWatermark("event_time", "1 minute")  # Allow 1 minute late data
             
             # 30-second windows with statistics
             windowed = stream_data.groupBy(
@@ -435,14 +425,6 @@ class SparkAnalyticsEngine:
             ).agg(
                 avg(col("data")).alias("moving_avg_30s"),
                 stddev(col("data")).alias("stddev_30s")
-            )
-            
-            # 5-minute moving average
-            windowed_5m = stream_data.groupBy(
-                col("device_id"),
-                spark_window(col("event_time"), "5 minutes").alias("time_window")
-            ).agg(
-                avg(col("data")).alias("moving_avg_5m")
             )
             
             # Calculate Z-scores and detect anomalies
@@ -454,11 +436,13 @@ class SparkAnalyticsEngine:
                 lit(None).cast(DoubleType()).alias("moving_avg_5m"),
                 (col("moving_avg_30s") / (col("stddev_30s") + 0.001)).alias("z_score"),
                 (col("z_score") > ANOMALY_THRESHOLD_STD).alias("is_anomaly"),
-                when(col("is_anomaly"), 0.95).otherwise(0.0).alias("anomaly_confidence")
+                when(col("is_anomaly"), 0.95).otherwise(0.0).alias("anomaly_confidence"),
+                col("time_window.start").alias("timestamp")
             )
             
-            # Write to memory for immediate processing
+            # Write to memory with UPDATE output mode (required for aggregations with watermark)
             query = result.writeStream \
+                .outputMode("update") \
                 .format("memory") \
                 .queryName("stream_analysis") \
                 .option("checkpointLocation", "/tmp/stream_checkpoint") \
@@ -466,14 +450,23 @@ class SparkAnalyticsEngine:
             
             logger.info("✓ Stream analysis started")
             
-            # Process results every 30 seconds
-            while query.isActive:
+            # Process results every 30 seconds (run for 60 seconds then stop)
+            import time
+            timeout = time.time() + 60
+            while query.isActive and time.time() < timeout:
                 try:
+                    time.sleep(30)
                     stream_results = self.spark.sql("SELECT * FROM stream_analysis LIMIT 100")
-                    result_dicts = [row.asDict() for row in stream_results.collect()]
-                    self.db.insert_stream_results(result_dicts)
+                    if stream_results.count() > 0:
+                        result_dicts = [row.asDict() for row in stream_results.collect()]
+                        self.db.insert_stream_results(result_dicts)
+                        logger.info(f"✓ Processed {len(result_dicts)} stream results")
                 except Exception as e:
                     logger.error(f"Error processing stream results: {e}")
+            
+            # Stop the query
+            query.stop()
+            logger.info("✓ Stream analysis completed")
         
         except Exception as e:
             logger.error(f"✗ Stream analysis error: {e}")

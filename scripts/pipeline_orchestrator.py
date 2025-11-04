@@ -63,7 +63,7 @@ SERVICES = {
             'docker', 'exec', 'flink-jobmanager',
             'bash', '-c',
             'cd /opt/flink/lib && '
-            'rm -f flink-*connector-kafka*.jar && '
+            'rm -f flink-*connector-kafka*.jar kafka-clients*.jar && '
             'wget -q https://repo1.maven.org/maven2/org/apache/flink/flink-connector-kafka/3.0.2-1.18/flink-connector-kafka-3.0.2-1.18.jar && '
             'wget -q https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.0/kafka-clients-3.4.0.jar && '
             'cd /opt/flink && flink run -py /opt/flink/scripts/03_flink_local_training.py -d'

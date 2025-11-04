@@ -132,10 +132,18 @@ class EdgeIIoTProducer:
                     # Extract device_id or use default
                     device_id = str(record.get('device_id', 'unknown'))
                     
+                    # Calculate a meaningful metric from the data
+                    # Use tcp.ack as the primary metric (it's commonly present)
+                    metric_value = record.get('tcp.ack', 0.0)
+                    if metric_value is None or metric_value == 0.0:
+                        # Fallback to other common numeric fields
+                        metric_value = record.get('tcp.seq', record.get('tcp.srcport', 0.0))
+                    
                     message = {
                         'device_id': device_id,
                         'timestamp': datetime.now().isoformat(),
-                        'data': record
+                        'data': float(metric_value) if metric_value is not None else 0.0,
+                        'raw_features': record  # Keep full record for advanced analytics
                     }
                     
                     yield message
