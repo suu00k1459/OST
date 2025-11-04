@@ -62,9 +62,11 @@ SERVICES = {
         'command': [
             'docker', 'exec', 'flink-jobmanager',
             'bash', '-c',
-            # Download Kafka connector JAR before running
-            'cd /opt/flink && wget -q https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.0.2-1.18/flink-sql-connector-kafka-3.0.2-1.18.jar -P lib/ 2>/dev/null || true && '
-            'flink run -py /opt/flink/scripts/03_flink_local_training.py -d'
+            'cd /opt/flink/lib && '
+            'rm -f flink-*connector-kafka*.jar && '
+            'wget -q https://repo1.maven.org/maven2/org/apache/flink/flink-connector-kafka/3.0.2-1.18/flink-connector-kafka-3.0.2-1.18.jar && '
+            'wget -q https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.0/kafka-clients-3.4.0.jar && '
+            'cd /opt/flink && flink run -py /opt/flink/scripts/03_flink_local_training.py -d'
         ],
         'log_file': 'flink_training.log',
         'critical': True,
@@ -91,15 +93,18 @@ SERVICES = {
     'spark_analytics': {
         'description': 'Spark Professional Analytics (Batch + Stream + Model Evaluation)',
         'command': [
-            'docker', 'exec', 'spark-master',
+            'docker', 'exec', '-u', 'root', 'spark-master',
             'bash', '-c',
-            # Create ivy cache directory with permissions
-            'mkdir -p /home/spark/.ivy2/cache && chmod -R 777 /home/spark/.ivy2 && '
+            'mkdir -p /home/spark/.ivy2/cache && '
+            'chown -R spark:spark /home/spark/.ivy2 && '
+            'chmod -R 755 /home/spark/.ivy2 && '
+            'su spark -c "'
             '/opt/spark/bin/spark-submit '
             '--master spark://spark-master:7077 '
             '--deploy-mode client '
             '--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 '
             '/opt/spark/scripts/05_spark_analytics_professional.py'
+            '"'
         ],
         'log_file': 'spark_analytics.log',
         'critical': True,
