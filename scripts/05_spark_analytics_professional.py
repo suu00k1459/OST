@@ -141,9 +141,8 @@ class TimescaleDBManager:
             # Batch Analysis Results
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS batch_analysis_results (
-                    id BIGSERIAL PRIMARY KEY,
+                    analysis_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     device_id TEXT NOT NULL,
-                    analysis_timestamp TIMESTAMPTZ DEFAULT NOW(),
                     metric_name TEXT,
                     avg_value DOUBLE PRECISION,
                     min_value DOUBLE PRECISION,
@@ -151,7 +150,8 @@ class TimescaleDBManager:
                     stddev_value DOUBLE PRECISION,
                     sample_count INTEGER,
                     analysis_date DATE,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    PRIMARY KEY (analysis_timestamp, device_id, metric_name)
                 );
                 SELECT create_hypertable('batch_analysis_results', 'analysis_timestamp', 
                     if_not_exists => TRUE);
@@ -162,7 +162,7 @@ class TimescaleDBManager:
             # Stream Analysis Results
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS stream_analysis_results (
-                    id BIGSERIAL PRIMARY KEY,
+                    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     device_id TEXT NOT NULL,
                     metric_name TEXT,
                     raw_value DOUBLE PRECISION,
@@ -171,8 +171,8 @@ class TimescaleDBManager:
                     z_score DOUBLE PRECISION,
                     is_anomaly BOOLEAN,
                     anomaly_confidence FLOAT,
-                    timestamp TIMESTAMPTZ DEFAULT NOW(),
-                    created_at TIMESTAMPTZ DEFAULT NOW()
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    PRIMARY KEY (timestamp, device_id, metric_name)
                 );
                 SELECT create_hypertable('stream_analysis_results', 'timestamp', 
                     if_not_exists => TRUE);
@@ -183,16 +183,16 @@ class TimescaleDBManager:
             # Global Model Evaluations
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS model_evaluations (
-                    id BIGSERIAL PRIMARY KEY,
-                    model_version TEXT,
+                    evaluation_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     device_id TEXT NOT NULL,
-                    evaluation_timestamp TIMESTAMPTZ DEFAULT NOW(),
+                    model_version TEXT,
                     model_accuracy FLOAT,
                     prediction_result TEXT,
                     actual_result TEXT,
                     is_correct BOOLEAN,
                     confidence FLOAT,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    PRIMARY KEY (evaluation_timestamp, device_id)
                 );
                 SELECT create_hypertable('model_evaluations', 'evaluation_timestamp', 
                     if_not_exists => TRUE);

@@ -6,6 +6,9 @@ USER root
 # Install Python packages needed for analytics
 RUN pip3 install --no-cache-dir kafka-python psycopg2-binary scikit-learn
 
+# Create work directory with proper permissions
+RUN mkdir -p /opt/spark/work && chown -R spark:spark /opt/spark/work && chmod 777 /opt/spark/work
+
 # Switch back to spark user
 USER spark
 
