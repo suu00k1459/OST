@@ -96,8 +96,8 @@ SELECT count(*) FROM federated_metrics;
 **Recent federated training metrics:**
 
 ```sql
-SELECT ts, round, metric, value 
-FROM federated_metrics 
+SELECT ts, round, metric, value
+FROM federated_metrics
 WHERE ts > NOW() - INTERVAL '1 hour'
 ORDER BY ts DESC;
 ```
@@ -105,7 +105,7 @@ ORDER BY ts DESC;
 **Metrics over time (graph):**
 
 ```sql
-SELECT 
+SELECT
   ts AS time,
   metric,
   value
@@ -117,7 +117,7 @@ ORDER BY time;
 **Average metric values by type:**
 
 ```sql
-SELECT 
+SELECT
   metric,
   avg(value) as avg_value,
   count(*) as count
@@ -129,15 +129,15 @@ ORDER BY count DESC;
 **Recent batch analysis results:**
 
 ```sql
-SELECT * FROM batch_analysis_results 
-ORDER BY created_at DESC 
+SELECT * FROM batch_analysis_results
+ORDER BY created_at DESC
 LIMIT 10;
 ```
 
 **Dashboard metrics:**
 
 ```sql
-SELECT * FROM dashboard_metrics 
+SELECT * FROM dashboard_metrics
 ORDER BY updated_at DESC;
 ```
 
@@ -159,18 +159,25 @@ Because Grafana runs inside a Docker container. From inside the container, `loca
 
 **No data in queries?**
 
-Check if services are running:
+1. **Start the pipeline first:**
 
-```powershell
-docker ps
-docker exec flink-jobmanager flink list
-```
+    ```powershell
+    cd "d:\OLD DESKTOP\Current Projects\OST-2"
+    python scripts/pipeline_orchestrator.py
+    ```
 
-Check if database has data:
+2. **Check if Flink job is running:**
 
-```powershell
-docker exec -it timescaledb psql -U flead -d flead -c "SELECT COUNT(*) FROM anomalies;"
-```
+    ```powershell
+    docker exec flink-jobmanager flink list
+    ```
+
+    You should see running jobs. If not, the pipeline isn't started.
+
+3. **Check if database has data:**
+    ```powershell
+    docker exec -it timescaledb psql -U flead -d flead -c "SELECT COUNT(*) FROM federated_metrics;"
+    ```
 
 **Still not working?**
 
@@ -188,34 +195,34 @@ Import this for a basic dashboard:
         "panels": [
             {
                 "id": 1,
-                "title": "Total Anomalies",
+                "title": "Total Metrics",
                 "type": "stat",
                 "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
                 "targets": [
                     {
-                        "rawSql": "SELECT count(*) FROM anomalies"
+                        "rawSql": "SELECT count(*) FROM federated_metrics"
                     }
                 ]
             },
             {
                 "id": 2,
-                "title": "Active Devices",
+                "title": "Training Rounds",
                 "type": "stat",
                 "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
                 "targets": [
                     {
-                        "rawSql": "SELECT count(DISTINCT device_id) FROM local_models"
+                        "rawSql": "SELECT count(DISTINCT round) FROM federated_metrics"
                     }
                 ]
             },
             {
                 "id": 3,
-                "title": "Recent Anomalies",
+                "title": "Recent Metrics",
                 "type": "table",
                 "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
                 "targets": [
                     {
-                        "rawSql": "SELECT device_id, detected_at FROM anomalies ORDER BY detected_at DESC LIMIT 20"
+                        "rawSql": "SELECT ts, metric, value FROM federated_metrics ORDER BY ts DESC LIMIT 20"
                     }
                 ]
             }

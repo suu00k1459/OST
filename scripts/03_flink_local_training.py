@@ -163,9 +163,8 @@ def main():
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(4)
     
-    # Add Kafka connector JARs to classpath
-    env.add_jars("file:///opt/flink/lib/flink-connector-kafka-3.0.2-1.18.jar",
-                 "file:///opt/flink/lib/kafka-clients-3.4.0.jar")
+    # Kafka connector JARs are pre-installed in Docker image at /opt/flink/lib/
+    # No need to add them explicitly - Flink automatically loads JARs from lib directory
     
     # Kafka Source (new API for Flink 1.18+)
     kafka_source = KafkaSource.builder() \

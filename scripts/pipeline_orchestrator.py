@@ -64,23 +64,17 @@ SERVICES = {
         'command': [
             'docker', 'exec', 'flink-jobmanager',
             'bash', '-c',
-            # Check if JARs exist, download if missing
-            'if [ ! -f /opt/flink/lib/flink-connector-kafka-3.0.2-1.18.jar ]; then '
-            'cd /opt/flink/lib && '
-            'wget -q https://repo1.maven.org/maven2/org/apache/flink/flink-connector-kafka/3.0.2-1.18/flink-connector-kafka-3.0.2-1.18.jar && '
-            'wget -q https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.0/kafka-clients-3.4.0.jar; '
-            'fi && '
-            # Check if job already running
-            'RUNNING_JOBS=$(flink list 2>/dev/null | grep RUNNING | grep -c "Local Training Job" || echo 0) && '
-            'if [ "$RUNNING_JOBS" -eq "0" ]; then '
+            # Check if job already running - fixed integer comparison
+            'RUNNING_JOBS=$(flink list 2>/dev/null | grep -c RUNNING || echo "0"); '
+            'if [ $RUNNING_JOBS -eq 0 ]; then '
             'cd /opt/flink && flink run -py /opt/flink/scripts/03_flink_local_training.py -d; '
             'else '
-            'echo "Flink job already running, skipping submission"; '
+            'echo "Flink job already running ($RUNNING_JOBS jobs), skipping submission"; '
             'fi'
         ],
         'log_file': 'flink_training.log',
         'critical': True,
-        'background': False,  # Changed to foreground so we can check result
+        'background': False,
         'startup_delay': 5,
         'requires_docker': True
     },
