@@ -25,7 +25,6 @@ These are supporting scripts, executed as needed, not part of main pipeline:
 -   **When**: Used by other services
 -   **Functions**: Model persistence, versioning, loading
 
-
 ---
 
 ### Main Pipeline (Prefix: 01-05)
@@ -122,6 +121,22 @@ These run in strict order during normal operation:
 -   **Visualization**: Feeds Grafana dashboard
 -   **Critical**: NO (but essential for monitoring)
 -   **Background**: YES (runs continuously)
+
+#### Stage 6: `06_setup_grafana.py`
+
+-   **Purpose**: Automated Grafana dashboard configuration
+-   **When**: Runs after all pipeline services are up
+-   **Actions**:
+    -   Creates TimescaleDB data source via Grafana API
+    -   Creates "FLEAD - Federated Learning Monitoring" dashboard
+    -   Configures 8 panels: stats, time-series graphs, and tables
+    -   Sets 30-second auto-refresh
+-   **Output**: Fully configured Grafana dashboard ready to use
+-   **Manual Run**: `python scripts/06_setup_grafana.py`
+-   **Critical**: NO (visualization only, not required for pipeline)
+-   **Background**: NO (completes in ~1 second)
+
+**Note**: The old manual Grafana setup process (documented in `GRAFANA.md`) is **deprecated**. The pipeline now automatically configures everything via API.
 
 ---
 
