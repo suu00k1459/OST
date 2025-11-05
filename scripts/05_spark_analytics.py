@@ -130,93 +130,11 @@ class TimescaleDBManager:
         try:
             self.conn = psycopg2.connect(**DB_CONFIG)
             logger.info("✓ Connected to TimescaleDB")
-            self._init_tables()
+            # Note: Tables are now created by 00_init_database.py during pipeline startup
+            logger.info("✓ Using tables created by database initialization")
         except Exception as e:
             logger.error(f"✗ Connection failed: {e}")
             raise
-    
-    def _init_tables(self):
-        """Initialize required tables"""
-        with self.conn.cursor() as cur:
-            # Batch Analysis Results
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS batch_analysis_results (
-                    analysis_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    device_id TEXT NOT NULL,
-                    metric_name TEXT,
-                    avg_value DOUBLE PRECISION,
-                    min_value DOUBLE PRECISION,
-                    max_value DOUBLE PRECISION,
-                    stddev_value DOUBLE PRECISION,
-                    sample_count INTEGER,
-                    analysis_date DATE,
-                    created_at TIMESTAMPTZ DEFAULT NOW(),
-                    PRIMARY KEY (analysis_timestamp, device_id, metric_name)
-                );
-                SELECT create_hypertable('batch_analysis_results', 'analysis_timestamp', 
-                    if_not_exists => TRUE);
-                CREATE INDEX IF NOT EXISTS idx_batch_device_time 
-                    ON batch_analysis_results (device_id, analysis_timestamp DESC);
-            """)
-            
-            # Stream Analysis Results
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS stream_analysis_results (
-                    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    device_id TEXT NOT NULL,
-                    metric_name TEXT,
-                    raw_value DOUBLE PRECISION,
-                    moving_avg_30s DOUBLE PRECISION,
-                    moving_avg_5m DOUBLE PRECISION,
-                    z_score DOUBLE PRECISION,
-                    is_anomaly BOOLEAN,
-                    anomaly_confidence FLOAT,
-                    created_at TIMESTAMPTZ DEFAULT NOW(),
-                    PRIMARY KEY (timestamp, device_id, metric_name)
-                );
-                SELECT create_hypertable('stream_analysis_results', 'timestamp', 
-                    if_not_exists => TRUE);
-                CREATE INDEX IF NOT EXISTS idx_stream_device_time 
-                    ON stream_analysis_results (device_id, timestamp DESC);
-            """)
-            
-            # Global Model Evaluations
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS model_evaluations (
-                    evaluation_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    device_id TEXT NOT NULL,
-                    model_version TEXT,
-                    model_accuracy FLOAT,
-                    prediction_result TEXT,
-                    actual_result TEXT,
-                    is_correct BOOLEAN,
-                    confidence FLOAT,
-                    created_at TIMESTAMPTZ DEFAULT NOW(),
-                    PRIMARY KEY (evaluation_timestamp, device_id)
-                );
-                SELECT create_hypertable('model_evaluations', 'evaluation_timestamp', 
-                    if_not_exists => TRUE);
-                CREATE INDEX IF NOT EXISTS idx_model_eval_time 
-                    ON model_evaluations (evaluation_timestamp DESC, model_version);
-            """)
-            
-            # Analytics Dashboard Metrics
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS dashboard_metrics (
-                    id BIGSERIAL PRIMARY KEY,
-                    metric_name TEXT UNIQUE,
-                    metric_value DOUBLE PRECISION,
-                    metric_unit TEXT,
-                    device_id TEXT,
-                    timestamp TIMESTAMPTZ DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ DEFAULT NOW()
-                );
-                CREATE INDEX IF NOT EXISTS idx_dashboard_metric 
-                    ON dashboard_metrics (metric_name, updated_at DESC);
-            """)
-            
-            self.conn.commit()
-            logger.info("✓ Tables initialized")
     
     def insert_batch_results(self, results: List[Dict]):
         """Insert batch analysis results"""

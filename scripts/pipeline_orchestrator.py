@@ -41,6 +41,14 @@ MAX_HEALTH_CHECK_RETRIES = 10
 
 # Service configurations
 SERVICES = {
+    'database_init': {
+        'description': 'Initialize TimescaleDB Schema',
+        'command': ['python', str(SCRIPTS_DIR / '00_init_database.py')],
+        'log_file': 'database_init.log',
+        'critical': True,
+        'background': False,
+        'startup_delay': 0
+    },
     'kafka_topics': {
         'description': 'Setup Kafka Topics',
         'command': ['python', str(SCRIPTS_DIR / '01_setup_kafka_topics.py')],
@@ -64,9 +72,11 @@ SERVICES = {
         'command': [
             'docker', 'exec', 'flink-jobmanager',
             'bash', '-c',
-            # Check if job already running - fixed integer comparison
-            'RUNNING_JOBS=$(flink list 2>/dev/null | grep -c RUNNING || echo "0"); '
-            'if [ $RUNNING_JOBS -eq 0 ]; then '
+            # Check if job already running - robust version
+            'RUNNING_JOBS=$(flink list 2>/dev/null | grep -c "RUNNING" || true); '
+            'RUNNING_JOBS=$(echo "$RUNNING_JOBS" | tr -d "\\n" | tr -d " "); '
+            'if [ "$RUNNING_JOBS" = "0" ] || [ -z "$RUNNING_JOBS" ]; then '
+            'echo "No Flink jobs running, submitting job..."; '
             'cd /opt/flink && flink run -py /opt/flink/scripts/03_flink_local_training.py -d; '
             'else '
             'echo "Flink job already running ($RUNNING_JOBS jobs), skipping submission"; '
@@ -284,6 +294,7 @@ class PipelineOrchestrator:
         
         # Start services in order
         startup_order = [
+            'database_init',          # Stage 0: Initialize database schema
             'kafka_topics',           # Stage 1: Create Kafka topics (HOST)
             'kafka_producer',         # Stage 2: Stream data (HOST)
             'flink_training',         # Stage 3: Real-time ML (Docker: Flink)
