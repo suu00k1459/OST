@@ -216,6 +216,8 @@ class FederatedAggregator:
                 """, (device_id, model_version, self.global_model.version, accuracy, samples_processed))
                 self.db_connection.commit()
         except Exception as e:
+            # CRITICAL: Rollback the failed transaction to allow future operations
+            self.db_connection.rollback()
             logger.warning(f"Error saving local model to DB: {e}")
     
     def aggregate(self) -> Dict[str, Any]:
@@ -320,6 +322,8 @@ class FederatedAggregator:
                 self.db_connection.commit()
                 logger.info(f"✓ Global model v{self.global_model.version} saved to database")
         except Exception as e:
+            # CRITICAL: Rollback the failed transaction to allow future operations
+            self.db_connection.rollback()
             logger.warning(f"Error saving global model to DB: {e}")
 
 
