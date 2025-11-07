@@ -1,8 +1,12 @@
 # Federated Learning Platform for Edge IoT Data
 
 
-
-![FLEAD architecture](/Architecture%20Diagrams/diagram4.jpg)
+## Project Architecture 
+![FLEAD architecture](/Device%20Viewer.PNG)
+## Device Viewer
+![Device Viewer](/Device%20Viewer.PNG)
+## Pipline Moniter
+![Pipline Moniter](/Moniter.PNG)
 
 **Key Features:**
 
@@ -22,6 +26,7 @@
 -   TimescaleDB - Time-series database
 -   Grafana - Visualization
 
+
 ## Dataset
 
 This platform uses the Edge-IIoTset dataset, which contains network traffic and IoT device telemetry data.
@@ -30,6 +35,7 @@ This platform uses the Edge-IIoTset dataset, which contains network traffic and 
 -   **Preprocessing Notebook**: [Data Preprocessing](https://www.kaggle.com/code/imedbenmadi/notebookf27d2cfbac)
 -   **Features**: 60+ network traffic features including TCP, MQTT, DNS, and HTTP metrics
 -   **Devices**: 2407 preprocessed device CSV files
+
 
 ## Run the Project 
 
@@ -43,16 +49,6 @@ START.bat
 STOP.bat
 ```
 
-## Access Points
-
-| Service       | URL                   | Purpose         |
-| ------------- | --------------------- | --------------- |
-| Device Viewer | http://localhost:8082 | Browse devices  |
-| Kafka UI      | http://localhost:8081 | Monitor streams |
-| Grafana       | http://localhost:3001 | View dashboards |
-| Flink UI      | http://localhost:8161 | Job monitoring  |
-
-**Database:** localhost:5432 (user: flead, password: password)
 
 ## System Architecture
 
@@ -66,8 +62,45 @@ Federated Server (FedAvg) → Global Model
 Spark Analytics → TimescaleDB → Grafana
 ```
 
-## Pipline Explanation
 
+
+## Access Points
+
+| Service       | URL                   | Purpose         |
+| ------------- | --------------------- | --------------- |
+| Device Viewer | http://localhost:8082 | Browse devices  |
+| Kafka UI      | http://localhost:8081 | Monitor streams |
+| Grafana       | http://localhost:3001 | View dashboards |
+| Flink UI      | http://localhost:8161 | Job monitoring  |
+| Monitoring     | http://localhost:5001 | Live system dashboard |
+
+**Database:** localhost:5432 (user: flead, password: password)
+
+### Grafana (Professional Dashboards)
+
+-   **URL**: http://localhost:3001
+-   **Login**: admin / admin
+-   **Features**:
+    -   Historical trends
+    -   8 pre-configured panels
+    -   Model accuracy graphs
+    -   Device performance rankings
+###  Monitoring dashboard
+
+-   **URL**: http://localhost:5001
+-   **Features**:
+    -   Service logos (Kafka, Flink, TimescaleDB, Grafana)
+    -   Real-time pipeline flow visualization
+    -   Color-coded health indicators
+    -   Recent activity feed
+    -   Updates every 2 seconds
+
+
+## Pipline Explanation
+ - Kafka producer streams 5 messages/second from randomly selected devices.
+ - Local Training (Flink) : Each device trains using Z-score anomaly detection 
+ - Federated Aggregation : Aggregates local models using FedAvg algorithm after receiving 20 device updates.
+ - Spark processes data and stores results in TimescaleDB. Grafana displays real-time dashboards with 5-second refresh
 ### 1. Data Streaming
 
 Kafka producer streams 5 messages/second from randomly selected devices.
@@ -96,6 +129,9 @@ Aggregates local models using FedAvg algorithm after receiving 20 device updates
 
 ```
 Global Accuracy = Σ(Local Accuracy × Samples) / Σ(Samples)
+
+accuracy = min(0.95, 0.7 + (model['version'] * 0.02))
+
 ```
 
 ### 4. Analytics & Visualization

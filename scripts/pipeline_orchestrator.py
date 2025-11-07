@@ -96,6 +96,14 @@ SERVICES = {
         'background': True,
         'startup_delay': 10
     },
+    'monitoring_dashboard': {
+        'description': 'Pipeline Monitoring Dashboard',
+        'command': ['python', str(ROOT_DIR / 'monitoring_dashboard' / 'pipeline_monitor.py')],
+        'log_file': 'monitoring_dashboard.log',
+        'critical': False,
+        'background': True,
+        'startup_delay': 15
+    },
     'spark_analytics': {
         'description': 'Spark Analytics (Batch + Stream + Model Evaluation)',
         'command': [
@@ -300,8 +308,9 @@ class PipelineOrchestrator:
             'flink_training',         # Stage 3: Real-time ML (Docker: Flink)
             'federated_aggregation',  # Stage 4: Model aggregation (HOST with Docker network)
             'spark_analytics',        # Stage 5: Batch analytics (Docker: Spark)
-            'device_viewer',          # Stage 6: Web interface (HOST)
-            'grafana_setup'           # Stage 7: Configure Grafana dashboards (HOST)
+            'monitoring_dashboard',   # Stage 6: Live monitoring dashboard (HOST)
+            'device_viewer',          # Stage 7: Web interface (HOST)
+            'grafana_setup'           # Stage 8: Configure Grafana dashboards (HOST)
         ]
         
         # NOTE: Services now properly submitted to Docker containers

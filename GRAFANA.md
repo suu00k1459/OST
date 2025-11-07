@@ -41,13 +41,13 @@ FLEAD-TimescaleDB
 **PostgreSQL Options:**
 
 -   Version: `12+`
--   TimescaleDB: ✅ Check this box
+-   TimescaleDB: Check this box
 
 **Leave everything else as default.**
 
 Click **"Save & test"** at the bottom.
 
-You should see: ✅ "Database Connection OK"
+You should see: "Database Connection OK"
 
 ## Step 4: Verify Data is Flowing
 
@@ -67,7 +67,7 @@ docker exec -it timescaledb psql -U flead -d flead -c "SELECT COUNT(*) FROM fede
 docker exec -it timescaledb psql -U flead -d flead -c "SELECT created_at FROM local_models ORDER BY created_at DESC LIMIT 1;"
 ```
 
-**✅ Expected Results:**
+** Expected Results:**
 
 -   local_models: Thousands of rows, constantly increasing
 -   federated_models: Hundreds of rows, updates every ~20 seconds
@@ -472,7 +472,7 @@ Refresh is not enabled. Click the time picker (top right) and set "Refresh every
 
 ## Current System Status (as of setup)
 
-✅ **Working:**
+**Working:**
 
 -   Kafka Producer: Sending 73,000+ messages
 -   Flink Training: Consuming and producing model updates
@@ -658,9 +658,9 @@ Copy this entire JSON and import it into Grafana (+ → Import → Paste JSON):
 
 Your FLEAD pipeline is **fully functional**:
 
--   ✅ 3,489 local models trained
--   ✅ 218 global federated models aggregated
--   ✅ Real-time data flowing every second
--   ✅ All services operating correctly
+-   3,489 local models trained
+-   218 global federated models aggregated
+-   Real-time data flowing every second
+-   All services operating correctly
 
-This guide provides the Grafana configuration to visualize all that data! 🎉
+This guide provides the Grafana configuration to visualize all that data!

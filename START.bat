@@ -197,6 +197,7 @@ echo PLATFORM STARTUP COMPLETE
 echo ====================================================================
 echo.
 echo ACCESS POINTS:
+echo   Live Monitoring:          http://localhost:5001
 echo   Grafana Dashboard:        http://localhost:3001  (admin/admin)
 echo   Kafka UI:                 http://localhost:8081
 echo   Device Viewer Website:    http://localhost:8082
