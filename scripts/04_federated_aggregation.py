@@ -51,7 +51,7 @@ LOCAL_MODELS_DIR.mkdir(exist_ok=True)
 GLOBAL_MODELS_DIR.mkdir(exist_ok=True)
 
 # Aggregation settings
-AGGREGATION_WINDOW = 10  # Aggregate every N local model updates
+AGGREGATION_WINDOW = 20  # Aggregate every 20 local model updates
 MIN_DEVICES_FOR_AGGREGATION = 2  # Minimum devices needed for aggregation
 FEDAVG_LEARNING_RATE = 0.1
 
@@ -216,12 +216,21 @@ class FederatedAggregator:
                 """, (device_id, model_version, self.global_model.version, accuracy, samples_processed))
                 self.db_connection.commit()
         except Exception as e:
+            # CRITICAL: Rollback the failed transaction to allow future operations
+            self.db_connection.rollback()
             logger.warning(f"Error saving local model to DB: {e}")
     
     def aggregate(self) -> Dict[str, Any]:
         """
         Aggregate local models using Federated Averaging (FedAvg)
-        Returns global model update
+        
+        Aggregation Strategy:
+        - GlobalAccuracy = Σ(LocalAccuracy_i × Samples_i) / Σ(Samples_i)
+        - Weight each device's contribution by number of samples processed
+        - Simple averaging: GlobalModel = Sum(LocalModels) / NumberOfDevices
+        
+        Returns:
+            Global model update dictionary
         """
         try:
             num_devices = len(self.local_model_buffer)
@@ -313,6 +322,8 @@ class FederatedAggregator:
                 self.db_connection.commit()
                 logger.info(f"✓ Global model v{self.global_model.version} saved to database")
         except Exception as e:
+            # CRITICAL: Rollback the failed transaction to allow future operations
+            self.db_connection.rollback()
             logger.warning(f"Error saving global model to DB: {e}")
 
 

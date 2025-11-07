@@ -11,11 +11,11 @@ echo Stopping all services...
 echo.
 
 echo Step 1: Stopping Docker containers...
-call docker-compose -f docker-compose-production.yml down
+call docker-compose down
 echo Done
 echo.
 
-echo Step 2: Stopping Python processes (Website)...
+echo Step 2: Stopping Python processes (Pipeline + Website)...
 taskkill /F /IM python.exe /T >nul 2>&1
 echo Done
 echo.

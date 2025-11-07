@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>FLEAD Pipeline Monitor - Live Status</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+                background: #ffffff;
+                color: #333;
+                padding: 20px;
+                min-height: 100vh;
+            }
+
+            .container {
+                max-width: 1600px;
+                margin: 0 auto;
+            }
+
+            header {
+                text-align: center;
+                margin-bottom: 30px;
+                animation: fadeIn 0.5s ease-in;
+                border-bottom: 3px solid #2196f3;
+                padding-bottom: 20px;
+            }
+
+            h1 {
+                font-size: 3em;
+                color: #333;
+                margin-bottom: 10px;
+            }
+
+            .subtitle {
+                font-size: 1.2em;
+                opacity: 0.8;
+                color: #666;
+            }
+
+            .pipeline-flow {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin: 40px 0;
+                padding: 30px;
+                background: #f5f5f5;
+                border-radius: 15px;
+                border: 2px solid #ddd;
+            }
+
+            .flow-step {
+                text-align: center;
+                flex: 1;
+                position: relative;
+            }
+
+            .flow-icon {
+                width: 80px;
+                height: 80px;
+                margin: 0 auto 15px;
+                background: #e0e0e0;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 2.5em;
+                transition: all 0.3s ease;
+            }
+
+            .flow-step.active .flow-icon {
+                background: rgba(76, 175, 80, 0.3);
+                box-shadow: 0 0 30px rgba(76, 175, 80, 0.5);
+                animation: pulse 2s infinite;
+            }
+
+            .flow-arrow {
+                position: absolute;
+                right: -30px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 2em;
+                opacity: 0.5;
+            }
+
+            .flow-step:last-child .flow-arrow {
+                display: none;
+            }
+
+            .stats-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 20px;
+                margin-bottom: 30px;
+            }
+
+            .stat-card {
+                background: #f9f9f9;
+                border-radius: 15px;
+                padding: 25px;
+                border: 2px solid #e0e0e0;
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+            }
+
+            .stat-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            }
+
+            .stat-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 15px;
+            }
+
+            .stat-title {
+                font-size: 1.3em;
+                font-weight: bold;
+                color: #333;
+            }
+
+            .status-badge {
+                padding: 5px 15px;
+                border-radius: 20px;
+                font-size: 0.9em;
+                font-weight: bold;
+            }
+
+            .status-healthy {
+                background: #4caf50;
+            }
+
+            .status-running {
+                background: #2196f3;
+            }
+
+            .status-stopped {
+                background: #f44336;
+            }
+
+            .status-unknown {
+                background: #ff9800;
+            }
+
+            .stat-value {
+                font-size: 2.5em;
+                font-weight: bold;
+                margin: 10px 0;
+                color: #2196f3;
+            }
+
+            .stat-detail {
+                font-size: 0.9em;
+                opacity: 0.8;
+                margin: 5px 0;
+                color: #555;
+            }
+
+            .activity-feed {
+                background: #f9f9f9;
+                border-radius: 15px;
+                padding: 25px;
+                border: 2px solid #e0e0e0;
+                max-height: 700px;
+                overflow-y: auto;
+            }
+
+            .activity-item {
+                background: #fff;
+                padding: 15px;
+                border-radius: 10px;
+                margin-bottom: 10px;
+                animation: slideIn 0.3s ease;
+                border-left: 4px solid #4caf50;
+            }
+
+            .activity-header {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 8px;
+            }
+
+            .activity-device {
+                font-weight: bold;
+                color: #2196f3;
+            }
+
+            .activity-time {
+                opacity: 0.6;
+                font-size: 0.9em;
+                color: #666;
+            }
+
+            .activity-details {
+                display: flex;
+                gap: 20px;
+                font-size: 0.9em;
+            }
+
+            .detail-item {
+                display: flex;
+                gap: 5px;
+            }
+
+            .detail-label {
+                opacity: 0.6;
+                color: #666;
+            }
+
+            .last-updated {
+                text-align: center;
+                margin-top: 20px;
+                opacity: 0.7;
+                font-size: 0.9em;
+            }
+
+            @keyframes pulse {
+                0%,
+                100% {
+                    transform: scale(1);
+                }
+                50% {
+                    transform: scale(1.1);
+                }
+            }
+
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(-20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            @keyframes slideIn {
+                from {
+                    opacity: 0;
+                    transform: translateX(-20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+            }
+
+            .loading {
+                text-align: center;
+                padding: 40px;
+                font-size: 1.5em;
+            }
+
+            .spinner {
+                border: 4px solid rgba(255, 255, 255, 0.3);
+                border-radius: 50%;
+                border-top: 4px solid #fff;
+                width: 40px;
+                height: 40px;
+                animation: spin 1s linear infinite;
+                margin: 0 auto 20px;
+            }
+
+            @keyframes spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+                100% {
+                    transform: rotate(360deg);
+                }
+            }
+
+            .metric-bar {
+                height: 8px;
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 4px;
+                overflow: hidden;
+                margin-top: 10px;
+            }
+
+            .metric-fill {
+                height: 100%;
+                background: linear-gradient(90deg, #4caf50, #8bc34a);
+                transition: width 0.5s ease;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <h1>FLEAD Pipeline Monitor</h1>
+                <div class="subtitle">
+                    Real-time Federated Learning Pipeline Status
+                </div>
+            </header>
+
+            <!-- Pipeline Flow Visualization -->
+            <div class="pipeline-flow">
+                <div class="flow-step" id="step-kafka">
+                    <div class="flow-icon">
+                        <img
+                            src="https://cdn.worldvectorlogo.com/logos/kafka.svg"
+                            style="width: 50px; height: 50px"
+                            onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\'font-weight:bold; font-size:1.5em;\'>KFK</div>'"
+                        />
+                    </div>
+                    <div><strong>Kafka</strong></div>
+                    <div style="font-size: 0.8em">Data Streaming</div>
+                    <div class="flow-arrow">→</div>
+                </div>
+                <div class="flow-step" id="step-flink">
+                    <div class="flow-icon">
+                        <img
+                            src="https://flink.apache.org/img/logo/png/1000/flink_squirrel_1000.png"
+                            style="width: 50px; height: 50px"
+                            onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\'font-weight:bold; font-size:1.5em;\'>FLK</div>'"
+                        />
+                    </div>
+                    <div><strong>Flink</strong></div>
+                    <div style="font-size: 0.8em">ML Training</div>
+                    <div class="flow-arrow">→</div>
+                </div>
+                <div class="flow-step" id="step-aggregation">
+                    <div
+                        class="flow-icon"
+                        style="
+                            background: rgba(33, 150, 243, 0.3);
+                            font-weight: bold;
+                            font-size: 1.8em;
+                        "
+                    >
+                        AGG
+                    </div>
+                    <div><strong>Aggregation</strong></div>
+                    <div style="font-size: 0.8em">Global Model</div>
+                    <div class="flow-arrow">→</div>
+                </div>
+                <div class="flow-step" id="step-database">
+                    <div class="flow-icon">
+                        <img
+                            src="https://avatars.githubusercontent.com/u/5430574?s=200&v=4"
+                            style="width: 50px; height: 50px"
+                            onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\'font-weight:bold; font-size:1.5em;\'>DB</div>'"
+                        />
+                    </div>
+                    <div><strong>TimescaleDB</strong></div>
+                    <div style="font-size: 0.8em">Storage</div>
+                    <div class="flow-arrow">→</div>
+                </div>
+                <div class="flow-step" id="step-grafana">
+                    <div class="flow-icon">
+                        <img
+                            src="https://cdn.worldvectorlogo.com/logos/grafana.svg"
+                            style="width: 50px; height: 50px"
+                            onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\'font-weight:bold; font-size:1.5em;\'>VIZ</div>'"
+                        />
+                    </div>
+                    <div><strong>Grafana</strong></div>
+                    <div style="font-size: 0.8em">Visualization</div>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <!-- Kafka Stats -->
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-title">Kafka Messages</div>
+                        <div class="status-badge" id="kafka-status">
+                            Loading...
+                        </div>
+                    </div>
+                    <div class="stat-value" id="kafka-total">-</div>
+                    <div class="stat-detail">
+                        IoT Stream: <span id="kafka-iiot">-</span>
+                    </div>
+                    <div class="stat-detail">
+                        Model Updates: <span id="kafka-models">-</span>
+                    </div>
+                    <div class="stat-detail">
+                        Global Updates: <span id="kafka-global">-</span>
+                    </div>
+                </div>
+
+                <!-- Flink Stats -->
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-title">Flink Jobs</div>
+                        <div class="status-badge" id="flink-status">
+                            Loading...
+                        </div>
+                    </div>
+                    <div class="stat-value" id="flink-jobs">-</div>
+                    <div class="stat-detail" id="flink-details">
+                        Checking jobs...
+                    </div>
+                </div>
+
+                <!-- Database Stats -->
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-title">Local Models</div>
+                        <div class="status-badge" id="db-status">
+                            Loading...
+                        </div>
+                    </div>
+                    <div class="stat-value" id="local-total">-</div>
+                    <div class="stat-detail">
+                        Last minute: <span id="local-minute">-</span>
+                    </div>
+                    <div class="stat-detail">
+                        Last 5 min: <span id="local-5min">-</span>
+                    </div>
+                    <div class="metric-bar">
+                        <div
+                            class="metric-fill"
+                            id="local-activity"
+                            style="width: 0%"
+                        ></div>
+                    </div>
+                </div>
+
+                <!-- Federated Models -->
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-title">Global Models</div>
+                        <div class="status-badge status-healthy">Active</div>
+                    </div>
+                    <div class="stat-value" id="federated-total">-</div>
+                    <div class="stat-detail">
+                        Last minute: <span id="federated-minute">-</span>
+                    </div>
+                    <div class="stat-detail">
+                        Last 5 min: <span id="federated-5min">-</span>
+                    </div>
+                    <div class="metric-bar">
+                        <div
+                            class="metric-fill"
+                            id="federated-activity"
+                            style="width: 0%"
+                        ></div>
+                    </div>
+                </div>
+
+                <!-- Python Processes -->
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-title">Python Services</div>
+                        <div class="status-badge" id="python-status">
+                            Loading...
+                        </div>
+                    </div>
+                    <div class="stat-value" id="python-count">-</div>
+                    <div id="python-list" class="stat-detail">
+                        Checking processes...
+                    </div>
+                </div>
+
+                <!-- Overall Health -->
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-title">Pipeline Health</div>
+                        <div class="status-badge" id="health-status">
+                            Loading...
+                        </div>
+                    </div>
+                    <div class="stat-value" id="health-text">-</div>
+                    <div class="stat-detail">
+                        Docker Services: <span id="docker-count">-</span>
+                    </div>
+                    <div class="stat-detail">
+                        Data Flow: <span id="flow-status">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity Feed -->
+            <div class="activity-feed">
+                <h2 style="margin-bottom: 20px">
+                    Recent Model Training Activity
+                </h2>
+                <div id="activity-list">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Loading recent activity...
+                    </div>
+                </div>
+            </div>
+
+            <div class="last-updated">
+                Last updated: <span id="last-update">Never</span> • Auto-refresh
+                every 2 seconds
+            </div>
+        </div>
+
+        <script>
+            let isUpdating = false;
+            let errorCount = 0;
+            const MAX_ERRORS = 3;
+
+            async function updateDashboard() {
+                if (isUpdating) return;
+                isUpdating = true;
+
+                try {
+                    const response = await fetch("/api/status");
+
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP ${response.status}: ${response.statusText}`
+                        );
+                    }
+
+                    const data = await response.json();
+                    errorCount = 0; // Reset error count on success
+
+                    // Update timestamp
+                    document.getElementById("last-update").textContent =
+                        new Date(data.timestamp).toLocaleTimeString();
+
+                    // Update Kafka stats
+                    const kafkaTotal =
+                        data.kafka["edge-iiot-stream"] +
+                        data.kafka["local-model-updates"] +
+                        data.kafka["global-model-updates"];
+                    document.getElementById("kafka-total").textContent =
+                        kafkaTotal.toLocaleString();
+                    document.getElementById("kafka-iiot").textContent =
+                        data.kafka["edge-iiot-stream"].toLocaleString();
+                    document.getElementById("kafka-models").textContent =
+                        data.kafka["local-model-updates"].toLocaleString();
+                    document.getElementById("kafka-global").textContent =
+                        data.kafka["global-model-updates"].toLocaleString();
+                    updateStatus("kafka-status", data.docker_services.kafka);
+                    updateFlowStep("step-kafka", data.docker_services.kafka);
+
+                    // Update Flink stats
+                    const flinkJobs = data.flink || [];
+                    document.getElementById("flink-jobs").textContent =
+                        flinkJobs.length;
+                    if (flinkJobs.length > 0) {
+                        const jobNames = flinkJobs
+                            .map((j) => `${j.name} (${j.status})`)
+                            .join(", ");
+                        document.getElementById("flink-details").textContent =
+                            jobNames;
+                        updateStatus(
+                            "flink-status",
+                            flinkJobs[0].status.toLowerCase()
+                        );
+                        updateFlowStep("step-flink", "running");
+                    } else {
+                        document.getElementById("flink-details").textContent =
+                            "No jobs running";
+                        updateStatus("flink-status", "stopped");
+                        updateFlowStep("step-flink", "stopped");
+                    }
+
+                    // Update database stats
+                    if (data.database && data.database.local_models) {
+                        const local = data.database.local_models;
+                        document.getElementById("local-total").textContent =
+                            local.total.toLocaleString();
+                        document.getElementById("local-minute").textContent =
+                            local.last_minute;
+                        document.getElementById("local-5min").textContent =
+                            local.last_5min;
+
+                        const localActivity = Math.min(
+                            (local.last_minute / 50) * 100,
+                            100
+                        );
+                        document.getElementById("local-activity").style.width =
+                            localActivity + "%";
+
+                        updateStatus(
+                            "db-status",
+                            data.docker_services.timescaledb
+                        );
+                        updateFlowStep(
+                            "step-database",
+                            data.docker_services.timescaledb
+                        );
+                    }
+
+                    if (data.database && data.database.federated_models) {
+                        const federated = data.database.federated_models;
+                        document.getElementById("federated-total").textContent =
+                            federated.total;
+                        document.getElementById(
+                            "federated-minute"
+                        ).textContent = federated.last_minute;
+                        document.getElementById("federated-5min").textContent =
+                            federated.last_5min;
+
+                        const federatedActivity = Math.min(
+                            (federated.last_minute / 10) * 100,
+                            100
+                        );
+                        document.getElementById(
+                            "federated-activity"
+                        ).style.width = federatedActivity + "%";
+
+                        updateFlowStep(
+                            "step-aggregation",
+                            federated.last_5min > 0 ? "running" : "stopped"
+                        );
+                    }
+
+                    // Update Python processes
+                    const pythonProcs = data.python_processes || [];
+                    document.getElementById("python-count").textContent =
+                        pythonProcs.length;
+                    if (pythonProcs.length > 0) {
+                        const procList = pythonProcs
+                            .map((p) => `[OK] ${p.name} (PID: ${p.pid})`)
+                            .join("<br>");
+                        document.getElementById("python-list").innerHTML =
+                            procList;
+                        updateStatus("python-status", "running");
+                    } else {
+                        document.getElementById("python-list").textContent =
+                            "No services running";
+                        updateStatus("python-status", "stopped");
+                    }
+
+                    // Update overall health
+                    const dockerHealthy = Object.values(
+                        data.docker_services
+                    ).filter((s) => s === "healthy" || s === "running").length;
+                    document.getElementById("health-text").textContent =
+                        data.pipeline_health.toUpperCase();
+                    document.getElementById(
+                        "docker-count"
+                    ).textContent = `${dockerHealthy}/${
+                        Object.keys(data.docker_services).length
+                    } healthy`;
+                    document.getElementById("flow-status").textContent =
+                        kafkaTotal > 0 ? "Active" : "Idle";
+                    updateStatus("health-status", data.pipeline_health);
+                    updateFlowStep(
+                        "step-grafana",
+                        data.docker_services.grafana
+                    );
+
+                    // Update activity feed
+                    if (data.recent_models && data.recent_models.length > 0) {
+                        const activityHTML = data.recent_models
+                            .map(
+                                (model) => `
+                        <div class="activity-item">
+                            <div class="activity-header">
+                                <div class="activity-device">${
+                                    model.device_id
+                                }</div>
+                                <div class="activity-time">${formatTime(
+                                    model.timestamp
+                                )}</div>
+                            </div>
+                            <div class="activity-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Version:</span>
+                                    <span>${model.model_version}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Accuracy:</span>
+                                    <span>${(model.accuracy * 100).toFixed(
+                                        1
+                                    )}%</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Samples:</span>
+                                    <span>${model.samples}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Global:</span>
+                                    <span>v${model.global_version}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `
+                            )
+                            .join("");
+                        document.getElementById("activity-list").innerHTML =
+                            activityHTML;
+                    }
+                } catch (error) {
+                    console.error("Error updating dashboard:", error);
+                    errorCount++;
+
+                    // Show error message to user
+                    if (errorCount >= MAX_ERRORS) {
+                        document.getElementById("health-text").textContent =
+                            "ERROR";
+                        document.getElementById("health-text").style.color =
+                            "#f44336";
+                        document.getElementById("health-status").textContent =
+                            "Connection Lost";
+                        document.getElementById("health-status").className =
+                            "status-badge status-stopped";
+
+                        // Show error in activity feed
+                        document.getElementById("activity-list").innerHTML = `
+                        <div class="activity-item" style="background: rgba(244, 67, 54, 0.2); border: 1px solid #f44336;">
+                            <div style="text-align: center; padding: 20px;">
+                                <div style="font-size: 2em; margin-bottom: 10px; font-weight: bold; color: #f44336;">!</div>
+                                <div style="font-size: 1.2em; font-weight: bold; margin-bottom: 10px;">Connection Error</div>
+                                <div style="opacity: 0.8;">Cannot connect to monitoring API</div>
+                                <div style="opacity: 0.7; font-size: 0.9em; margin-top: 10px;">
+                                    Error: ${error.message}
+                                </div>
+                                <div style="margin-top: 15px;">
+                                    <button onclick="location.reload()" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em;">
+                                        Retry Connection
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    }
+                } finally {
+                    isUpdating = false;
+                }
+            }
+
+            function updateStatus(elementId, status) {
+                const element = document.getElementById(elementId);
+                element.className = "status-badge";
+
+                if (status === "healthy") {
+                    element.classList.add("status-healthy");
+                    element.textContent = "Healthy";
+                } else if (status === "running") {
+                    element.classList.add("status-running");
+                    element.textContent = "Running";
+                } else if (status === "stopped") {
+                    element.classList.add("status-stopped");
+                    element.textContent = "Stopped";
+                } else {
+                    element.classList.add("status-unknown");
+                    element.textContent = "Unknown";
+                }
+            }
+
+            function updateFlowStep(stepId, status) {
+                const step = document.getElementById(stepId);
+                if (status === "healthy" || status === "running") {
+                    step.classList.add("active");
+                } else {
+                    step.classList.remove("active");
+                }
+            }
+
+            function formatTime(timestamp) {
+                const date = new Date(timestamp);
+                const now = new Date();
+                const diff = Math.floor((now - date) / 1000); // seconds
+
+                if (diff < 60) return `${diff}s ago`;
+                if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                return date.toLocaleString();
+            }
+
+            // Initial update
+            updateDashboard();
+
+            // Auto-refresh every 2 seconds
+            setInterval(updateDashboard, 2000);
+        </script>
+    </body>
+</html>

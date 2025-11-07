@@ -5,6 +5,7 @@ Complete startup and coordination of all pipeline components:
 2. Flink Local Training → detects anomalies per device, trains local models
 3. Federated Aggregation → aggregates models to create global model
 4. Spark Batch Analytics → long-term trend analysis and maintenance signals
+5. Device Viewer Website → web interface for device exploration
 """
 
 import subprocess
@@ -14,6 +15,7 @@ import sys
 import os
 import signal
 import threading
+import webbrowser
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -39,6 +41,14 @@ MAX_HEALTH_CHECK_RETRIES = 10
 
 # Service configurations
 SERVICES = {
+    'database_init': {
+        'description': 'Initialize TimescaleDB Schema',
+        'command': ['python', str(SCRIPTS_DIR / '00_init_database.py')],
+        'log_file': 'database_init.log',
+        'critical': True,
+        'background': False,
+        'startup_delay': 0
+    },
     'kafka_topics': {
         'description': 'Setup Kafka Topics',
         'command': ['python', str(SCRIPTS_DIR / '01_setup_kafka_topics.py')],
@@ -62,16 +72,20 @@ SERVICES = {
         'command': [
             'docker', 'exec', 'flink-jobmanager',
             'bash', '-c',
-            'cd /opt/flink/lib && '
-            'rm -f flink-*connector-kafka*.jar && '
-            'wget -q https://repo1.maven.org/maven2/org/apache/flink/flink-connector-kafka/3.0.2-1.18/flink-connector-kafka-3.0.2-1.18.jar && '
-            'wget -q https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.0/kafka-clients-3.4.0.jar && '
-            'cd /opt/flink && flink run -py /opt/flink/scripts/03_flink_local_training.py -d'
+            # Check if job already running - robust version
+            'RUNNING_JOBS=$(flink list 2>/dev/null | grep -c "RUNNING" || true); '
+            'RUNNING_JOBS=$(echo "$RUNNING_JOBS" | tr -d "\\n" | tr -d " "); '
+            'if [ "$RUNNING_JOBS" = "0" ] || [ -z "$RUNNING_JOBS" ]; then '
+            'echo "No Flink jobs running, submitting job..."; '
+            'cd /opt/flink && flink run -py /opt/flink/scripts/03_flink_local_training.py -d; '
+            'else '
+            'echo "Flink job already running ($RUNNING_JOBS jobs), skipping submission"; '
+            'fi'
         ],
         'log_file': 'flink_training.log',
         'critical': True,
-        'background': True,
-        'startup_delay': 10,
+        'background': False,
+        'startup_delay': 5,
         'requires_docker': True
     },
     'federated_aggregation': {
@@ -82,16 +96,16 @@ SERVICES = {
         'background': True,
         'startup_delay': 10
     },
-    'python_analytics': {
-        'description': 'Python Analytics (Alternative to Spark)',
-        'command': ['python', str(SCRIPTS_DIR / '06_python_analytics.py')],
-        'log_file': 'python_analytics.log',
-        'critical': True,
+    'monitoring_dashboard': {
+        'description': 'Pipeline Monitoring Dashboard',
+        'command': ['python', str(ROOT_DIR / 'monitoring_dashboard' / 'pipeline_monitor.py')],
+        'log_file': 'monitoring_dashboard.log',
+        'critical': False,
         'background': True,
         'startup_delay': 15
     },
     'spark_analytics': {
-        'description': 'Spark Professional Analytics (Batch + Stream + Model Evaluation)',
+        'description': 'Spark Analytics (Batch + Stream + Model Evaluation)',
         'command': [
             'docker', 'exec', '-u', 'root', 'spark-master',
             'bash', '-c',
@@ -103,7 +117,7 @@ SERVICES = {
             '--master spark://spark-master:7077 '
             '--deploy-mode client '
             '--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 '
-            '/opt/spark/scripts/05_spark_analytics_professional.py'
+            '/opt/spark/scripts/05_spark_analytics.py'
             '"'
         ],
         'log_file': 'spark_analytics.log',
@@ -111,6 +125,22 @@ SERVICES = {
         'background': True,
         'startup_delay': 20,
         'requires_docker': True
+    },
+    'device_viewer': {
+        'description': 'Device Viewer Website (Flask Web Interface)',
+        'command': ['python', str(ROOT_DIR / 'website' / 'app.py')],
+        'log_file': 'device_viewer.log',
+        'critical': False,  # Not critical for core pipeline
+        'background': True,
+        'startup_delay': 3
+    },
+    'grafana_setup': {
+        'description': 'Grafana Dashboard Configuration (Automated Setup)',
+        'command': ['python', str(SCRIPTS_DIR / '06_setup_grafana.py')],
+        'log_file': 'grafana_setup.log',
+        'critical': False,  # Nice to have but not blocking
+        'background': False,  # Foreground - completes quickly
+        'startup_delay': 5
     }
 }
 
@@ -272,11 +302,15 @@ class PipelineOrchestrator:
         
         # Start services in order
         startup_order = [
+            'database_init',          # Stage 0: Initialize database schema
             'kafka_topics',           # Stage 1: Create Kafka topics (HOST)
             'kafka_producer',         # Stage 2: Stream data (HOST)
             'flink_training',         # Stage 3: Real-time ML (Docker: Flink)
             'federated_aggregation',  # Stage 4: Model aggregation (HOST with Docker network)
-            'spark_analytics'         # Stage 5: Batch analytics (Docker: Spark)
+            'spark_analytics',        # Stage 5: Batch analytics (Docker: Spark)
+            'monitoring_dashboard',   # Stage 6: Live monitoring dashboard (HOST)
+            'device_viewer',          # Stage 7: Web interface (HOST)
+            'grafana_setup'           # Stage 8: Configure Grafana dashboards (HOST)
         ]
         
         # NOTE: Services now properly submitted to Docker containers
@@ -404,6 +438,34 @@ class PipelineOrchestrator:
         logger.info("Cleanup complete")
 
 
+def launch_web_interfaces():
+    """Launch web browsers for all UI interfaces"""
+    logger.info("\n" + "=" * 70)
+    logger.info("LAUNCHING WEB INTERFACES")
+    logger.info("=" * 70)
+    
+    # Wait a moment to ensure services are ready
+    time.sleep(2)
+    
+    # URLs to open
+    urls = [
+        ('Device Viewer Website', 'http://localhost:8082'),
+        ('Kafka UI', 'http://localhost:8081'),
+        ('Grafana Dashboard', 'http://localhost:3001'),
+        ('Flink Dashboard', 'http://localhost:8161')
+    ]
+    
+    for name, url in urls:
+        try:
+            logger.info(f"Opening {name}: {url}")
+            webbrowser.open(url, new=2)  # new=2 opens in a new tab if possible
+            time.sleep(1)  # Small delay between launches
+        except Exception as e:
+            logger.warning(f"Could not open {name}: {e}")
+    
+    logger.info("=" * 70)
+
+
 def main():
     """Main orchestrator"""
     orchestrator = PipelineOrchestrator()
@@ -415,7 +477,11 @@ def main():
             orchestrator.show_pipeline_status()
             
             logger.info("\nPipeline started successfully!")
-            logger.info("Press Ctrl+C to stop\n")
+            
+            # Launch web interfaces in browser
+            launch_web_interfaces()
+            
+            logger.info("\nPress Ctrl+C to stop\n")
             
             # Keep orchestrator running
             while True:

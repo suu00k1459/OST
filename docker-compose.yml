@@ -146,15 +146,17 @@ services:
         command: taskmanager
         depends_on:
             flink-jobmanager:
-                condition: service_started
+                condition: service_healthy
             kafka:
                 condition: service_healthy
         environment:
             - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
             - JOB_MANAGER_RPC_PORT=6123
             - TASK_MANAGER_RPC_PORT=6122
-            - TASK_MANAGER_SLOTS=4
-            - TASK_MANAGER_MEMORY_PROCESS_SIZE=1024m
+            - TASK_MANAGER_NUMBER_OF_TASK_SLOTS=4
+            - TASK_MANAGER_MEMORY_PROCESS_SIZE=2048m
+            - TASK_MANAGER_MEMORY_FRAMEWORK_HEAP_SIZE=512m
+            - TASK_MANAGER_MEMORY_TASK_HEAP_SIZE=1024m
         volumes:
             - flink_taskmanager_data:/flink/data
             - ./scripts:/opt/flink/scripts
