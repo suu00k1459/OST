@@ -1,24 +1,5 @@
 # FLEAD: Federated Learning for IoT Anomaly Detection
 
-## Complete System Architecture & Defense Presentation
-
----
-
-## TABLE OF CONTENTS
-
-1. [System Overview](#system-overview)
-2. [Architecture Diagram](#architecture-diagram)
-3. [Component Deep Dive](#component-deep-dive)
-    - [Kafka: Message Broker](#kafka-message-broker)
-    - [Flink: Real-time Training](#flink-real-time-training)
-    - [Federated Aggregation: FedAvg](#federated-aggregation-fedavg)
-    - [Spark: Analytics & Evaluation](#spark-analytics--evaluation)
-    - [TimescaleDB: Storage](#timescaledb-storage)
-    - [Grafana: Visualization](#grafana-visualization)
-4. [Data Flow Pipeline](#data-flow-pipeline)
-5. [How Components Link Together](#how-components-link-together)
-6. [Key Algorithms](#key-algorithms)
-7. [Performance Metrics](#performance-metrics)
 
 ---
 
