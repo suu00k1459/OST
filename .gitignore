@@ -7,11 +7,12 @@ edge_iiot_processed
 
 
 
-
-
 # Ignore large datasets
 data/*.csv
 data/*.zip
+
+# Ignore project-specific implementation or build artifacts
+Implementation/
 
 raw
 processed
