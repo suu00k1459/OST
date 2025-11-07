@@ -149,8 +149,3 @@ Spark processes data and stores results in TimescaleDB. Grafana displays real-ti
 
 
 
-
-
-
--   **GRAFANA.md` - Dashboard setup guide**
-

@@ -452,7 +452,11 @@ def launch_web_interfaces():
         ('Device Viewer Website', 'http://localhost:8082'),
         ('Kafka UI', 'http://localhost:8081'),
         ('Grafana Dashboard', 'http://localhost:3001'),
-        ('Flink Dashboard', 'http://localhost:8161')
+        ('Flink Dashboard', 'http://localhost:8161'), 
+        ('Spark Master UI', 'http://localhost:8086'),
+        ('Spark Worker UI', 'http://localhost:8087'),
+        ('Live Monitoring', 'http://localhost:5001'),
+
     ]
     
     for name, url in urls:
