@@ -61,7 +61,7 @@ echo ====================================================================
 echo.
 
 echo Installing Python dependencies...
-call pip install --upgrade pip setuptools wheel
+call python -m pip install --upgrade pip setuptools wheel
 if errorlevel 1 (
     echo [ERROR] Failed to upgrade pip/setuptools.
     pause

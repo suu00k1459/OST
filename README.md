@@ -2,7 +2,7 @@
 
 
 ## Project Architecture 
-![FLEAD architecture](/Device%20Viewer.PNG)
+![FLEAD architecture](/project_architecture.png)
 ## Device Viewer
 ![Device Viewer](/Device%20Viewer.PNG)
 ## Pipline Moniter
