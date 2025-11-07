@@ -18,6 +18,8 @@ from datetime import datetime
 import numpy as np
 from collections import defaultdict
 import sys
+import pickle
+from pathlib import Path
 
 # Try to import Flink (will be available in Docker container)
 try:
@@ -53,6 +55,97 @@ ANOMALY_THRESHOLD = 2.5
 MODEL_TRAINING_INTERVAL_ROWS = 50  # Train model every 50 rows per device
 MODEL_TRAINING_INTERVAL_SECONDS = 60  # OR every 60 seconds (1 minute)
 
+# SGD Configuration
+MODEL_DIR = Path('/app/models/local')
+LEARNING_RATE = 0.01
+BATCH_SIZE = 50
+
+
+class SGDModelTrainer:
+    """Stochastic Gradient Descent trainer for local models"""
+    
+    def __init__(self, device_id: str, learning_rate: float = 0.01):
+        self.device_id = device_id
+        self.learning_rate = learning_rate
+        self.weights = np.array([0.1, 0.1, 0.1])  # 3 features: mean, std, z_score
+        self.bias = 0.0
+        self.loss_history = []
+        self.n_updates = 0
+    
+    def predict(self, features: np.ndarray) -> float:
+        """Make prediction: sigmoid(w·x + b)"""
+        z = np.dot(self.weights, features) + self.bias
+        return 1 / (1 + np.exp(-np.clip(z, -500, 500)))  # Sigmoid with clipping
+    
+    def train_batch(self, X_batch: np.ndarray, y_batch: np.ndarray) -> float:
+        """
+        Train on batch using gradient descent
+        X_batch: shape (batch_size, n_features)
+        y_batch: shape (batch_size,) - binary labels (0 or 1)
+        Returns: average loss
+        """
+        if len(X_batch) == 0:
+            return 0.0
+        
+        batch_loss = 0.0
+        
+        for X_sample, y_sample in zip(X_batch, y_batch):
+            # Forward pass
+            prediction = self.predict(X_sample)
+            
+            # Binary cross-entropy loss
+            loss = -y_sample * np.log(np.clip(prediction, 1e-7, 1)) - \
+                   (1 - y_sample) * np.log(np.clip(1 - prediction, 1e-7, 1))
+            batch_loss += loss
+            
+            # Backward pass (gradient computation)
+            error = prediction - y_sample
+            
+            # Update weights: w = w - lr * error * x
+            self.weights -= self.learning_rate * error * X_sample
+            self.bias -= self.learning_rate * error
+            
+            self.n_updates += 1
+        
+        avg_loss = batch_loss / len(X_batch)
+        self.loss_history.append(avg_loss)
+        
+        return avg_loss
+    
+    def calculate_accuracy(self, X: np.ndarray, y: np.ndarray) -> float:
+        """Calculate accuracy on evaluation data"""
+        if len(X) == 0:
+            return 0.0
+        
+        predictions = np.array([self.predict(x) > 0.5 for x in X])
+        accuracy = np.mean(predictions == y)
+        return float(accuracy)
+    
+    def save_model(self, version: int):
+        """Save model to disk"""
+        try:
+            MODEL_DIR.mkdir(parents=True, exist_ok=True)
+            model_path = MODEL_DIR / f"device_{self.device_id}_v{version}.pkl"
+            
+            model_data = {
+                'device_id': self.device_id,
+                'version': version,
+                'weights': self.weights,
+                'bias': self.bias,
+                'learning_rate': self.learning_rate,
+                'n_updates': self.n_updates,
+                'loss_history': self.loss_history
+            }
+            
+            with open(model_path, 'wb') as f:
+                pickle.dump(model_data, f)
+            
+            logger.info(f"✓ Saved model for {self.device_id} v{version}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving model: {e}")
+            return False
+
 
 class AnomalyDetectionFunction(MapFunction):
     """Flink MapFunction for real-time anomaly detection and local model training"""
@@ -67,6 +160,11 @@ class AnomalyDetectionFunction(MapFunction):
             'last_training_time': datetime.now().timestamp()
         })
         self.model_versions = defaultdict(lambda: {'version': 0, 'samples': 0})
+        # SGD trainer per device
+        self.sgd_trainers = defaultdict(lambda device_id=None: SGDModelTrainer(
+            device_id if device_id else 'unknown',
+            learning_rate=LEARNING_RATE
+        ))
     
     def should_train_model(self, device_id: str) -> bool:
         """
@@ -132,11 +230,50 @@ class AnomalyDetectionFunction(MapFunction):
                 stats['samples'] = 0
                 stats['last_training_time'] = datetime.now().timestamp()
                 
-                # Create model update message
+                # SGD Training on accumulated values
+                if len(stats['values']) >= 2:
+                    # Create training data from stats
+                    X_train = []
+                    y_train = []
+                    
+                    for v in stats['values']:
+                        z_score = abs((v - stats['mean']) / stats['std']) if stats['std'] > 0 else 0
+                        
+                        # Features: [mean, std, z_score]
+                        features = np.array([stats['mean'], stats['std'], z_score])
+                        X_train.append(features)
+                        
+                        # Label: 1 if anomaly (z > threshold), 0 otherwise
+                        label = 1 if z_score > ANOMALY_THRESHOLD else 0
+                        y_train.append(label)
+                    
+                    X_train = np.array(X_train)
+                    y_train = np.array(y_train)
+                    
+                    # Get trainer for this device
+                    trainer = self.sgd_trainers[device_id]
+                    trainer.device_id = device_id  # Ensure device_id is set
+                    
+                    # Train on batch
+                    loss = trainer.train_batch(X_train, y_train)
+                    
+                    # Calculate accuracy on training data
+                    accuracy = trainer.calculate_accuracy(X_train, y_train)
+                    
+                    # Save model to disk
+                    trainer.save_model(model['version'])
+                    
+                    logger.info(f"Device {device_id}: v{model['version']} - Accuracy: {accuracy:.2%}, Loss: {loss:.4f}, Updates: {trainer.n_updates}")
+                else:
+                    accuracy = 0.5  # Random guess if not enough data
+                    loss = 0.0
+                
+                # Create model update message with REAL accuracy
                 model_update = {
                     'device_id': device_id,
                     'model_version': model['version'],
-                    'accuracy': min(0.95, 0.7 + (model['version'] * 0.02)),
+                    'accuracy': float(accuracy),  # REAL accuracy from SGD!
+                    'loss': float(loss),
                     'samples_processed': len(stats['values']),
                     'mean': float(stats['mean']),
                     'std': float(stats['std']),
