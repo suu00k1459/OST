@@ -192,6 +192,11 @@ For each IoT device (independently):
    → Publishes to Kafka
 ```
 
+```python
+z_score = (value - mean) / std_dev  # 3 math operations
+if z_score > 2.5:
+    send_alert()
+```
 **The SGD Training Algorithm:**
 
 ```python
