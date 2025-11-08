@@ -219,7 +219,7 @@ class TimescaleDBManager:
         try:
             with self.conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO dashboard_metrics (metric_name, metric_value, metric_unit, device_id, timestamp)
+                    INSERT INTO dashboard_metrics (device_id, metric_name, metric_value, metric_unit, timestamp)
                     VALUES (%s, %s, %s, %s, NOW())
                     ON CONFLICT (metric_name) 
                     DO UPDATE SET metric_value = %s, updated_at = NOW()
@@ -261,48 +261,94 @@ class SparkAnalyticsEngine:
         return session
     
     # ========== BATCH ANALYSIS ==========
-    
     def run_batch_analysis(self, window_hours: int = BATCH_WINDOW_HOURS):
-        """Execute batch analysis on historical CSV data"""
-        logger.info(f"🔄 Starting batch analysis on CSV files...")
-        
-        try:
-            # Read from CSV files in /opt/spark/data/processed
-            csv_path = "/opt/spark/data/processed/*.csv"
-            
-            # Read CSV data
-            df = self.spark.read \
-                .option("header", "true") \
-                .option("inferSchema", "true") \
-                .csv(csv_path)
-            
-            # Check if dataframe has data
-            if df.rdd.isEmpty():
-                logger.warning("⚠ No CSV data found for batch analysis")
+    """Execute batch analysis on IoT CSV data"""
+    logger.info(f"🔄 Starting batch analysis on Edge-IIoT CSV files...")
+
+    try:
+        csv_path = "/opt/spark/data/processed/*.csv"
+
+        df = self.spark.read \
+            .option("header", "true") \
+            .option("inferSchema", "true") \
+            .csv(csv_path)
+
+        if df.rdd.isEmpty():
+            logger.warning("⚠ No CSV data found for batch analysis")
+            return
+
+        required_cols = ["frame.time", "device_id", "mqtt.len"]
+        for c in required_cols:
+            if c not in df.columns:
+                logger.error(f"✗ Missing required column: {c}")
                 return
+
+        # 시간 컬럼 변환
+        df = df.withColumn("timestamp", to_timestamp(col("frame.time")))
+
+        # 일 단위 통계 분석
+        daily_agg = df.groupBy(
+            col("device_id"),
+            to_date(col("timestamp")).alias("analysis_date")
+        ).agg(
+            avg(col("mqtt.len")).alias("avg_value"),
+            spark_min(col("mqtt.len")).alias("min_value"),
+            spark_max(col("mqtt.len")).alias("max_value"),
+            stddev(col("mqtt.len")).alias("stddev_value"),
+            count("*").alias("sample_count")
+        ).withColumn("metric_name", lit("mqtt.len")) \
+         .withColumn("analysis_timestamp", current_timestamp())
+
+        logger.info("✓ Batch analysis completed successfully")
+        daily_agg.show(5)
+
+        batch_results = [row.asDict() for row in daily_agg.collect()]
+        self.db.insert_batch_results(batch_results)
+
+    except Exception as e:
+        logger.error(f"✗ Batch analysis error: {e}")
+        
+    # def run_batch_analysis(self, window_hours: int = BATCH_WINDOW_HOURS):
+    #     """Execute batch analysis on historical CSV data"""
+    #     logger.info(f"🔄 Starting batch analysis on CSV files...")
+        
+    #     try:
+    #         # Read from CSV files in /opt/spark/data/processed
+    #         csv_path = "/opt/spark/data/processed/*.csv"
             
-            # Aggregate by device and date
-            daily_agg = df.groupBy(
-                col("device_id"),
-                to_date(col("timestamp")).alias("analysis_date")
-            ).agg(
-                avg(col("temperature")).alias("avg_value"),
-                spark_min(col("temperature")).alias("min_value"),
-                spark_max(col("temperature")).alias("max_value"),
-                stddev(col("temperature")).alias("stddev_value"),
-                count("*").alias("sample_count")
-            ).withColumn("metric_name", lit("temperature")) \
-             .withColumn("analysis_timestamp", spark_current_timestamp())
+    #         # Read CSV data
+    #         df = self.spark.read \
+    #             .option("header", "true") \
+    #             .option("inferSchema", "true") \
+    #             .csv(csv_path)
             
-            logger.info("✓ Batch analysis completed")
+    #         # Check if dataframe has data
+    #         if df.rdd.isEmpty():
+    #             logger.warning("⚠ No CSV data found for batch analysis")
+    #             return
             
-            # Convert to list and store
-            batch_results = daily_agg.collect()
-            batch_dicts = [row.asDict() for row in batch_results]
-            self.db.insert_batch_results(batch_dicts)
+    #         # Aggregate by device and date
+    #         daily_agg = df.groupBy(
+    #             col("device_id"),
+    #             to_date(col("frame.time")).alias("analysis_date")
+    #         ).agg(
+    #             avg(col("temperature")).alias("avg_value"),
+    #             spark_min(col("temperature")).alias("min_value"),
+    #             spark_max(col("temperature")).alias("max_value"),
+    #             stddev(col("temperature")).alias("stddev_value"),
+    #             count("*").alias("sample_count")
+    #         ).withColumn("metric_name", lit("temperature")) \
+    #          .withColumn("analysis_timestamp",  current_timestamp())
             
-        except Exception as e:
-            logger.error(f"✗ Batch analysis error: {e}")
+    #         logger.info("✓ Batch analysis completed")
+            
+    #         # Convert to list and store
+    #         batch_results = daily_agg.collect()
+    #         batch_dicts = [row.asDict() for row in batch_results]
+    #         self.db.insert_batch_results(batch_dicts)
+            
+    #     except Exception as e:
+    #         logger.error(f"✗ Batch analysis error: {e}")
     
     # ========== STREAM ANALYSIS ==========
     

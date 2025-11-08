@@ -198,6 +198,21 @@ services:
             timeout: 5s
             retries: 5
             start_period: 60s
+    spark-job:
+        build:
+            context: .
+            dockerfile: Dockerfile.spark
+        container_name: spark-job
+        depends_on:
+            spark-master:
+                condition: service_healthy
+        command: bash -c "sleep 60 && /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/scripts/spark_analytics.py"
+        volumes:
+            - ./scripts:/opt/spark/scripts
+            - ./data:/opt/spark/data
+        networks:
+            - flead_network
+
 
     spark-worker-1:
         build:
@@ -208,7 +223,7 @@ services:
         environment:
             - SPARK_NO_DAEMONIZE=1
             - SPARK_WORKER_CORES=2
-            - SPARK_WORKER_MEMORY=1G
+            - SPARK_WORKER_MEMORY=1
             - SPARK_MASTER=spark://spark-master:7077
         ports:
             - "8087:8081"

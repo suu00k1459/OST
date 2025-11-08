@@ -63,12 +63,18 @@ CREATE TABLE dashboard_metrics (
     metric_value FLOAT NOT NULL,
     metric_type TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (id, created_at)
 );
 
 -- Create batch_analysis_results table (Spark batch analytics)
 CREATE TABLE batch_analysis_results (
     id BIGSERIAL PRIMARY KEY,
+    analysis_type TEXT NOT NULL,
+    result_data JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+id BIGSERIAL PRIMARY KEY,
     device_id TEXT,
     metric_name TEXT,
     avg_value DOUBLE PRECISION,
@@ -77,20 +83,14 @@ CREATE TABLE batch_analysis_results (
     stddev_value DOUBLE PRECISION,
     sample_count INT,
     analysis_date DATE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+    analysis_timestamp TIMESTAMPTZ DEFAULT NOW()
 
 -- Create stream_analysis_results table (Spark streaming analytics)
 CREATE TABLE stream_analysis_results (
-    id BIGSERIAL ,
-    device_id TEXT,
-    metric_name TEXT,
-    raw_value DOUBLE PRECISION,
-    moving_avg_30s DOUBLE PRECISION,
-    moving_avg_5m DOUBLE PRECISION,
-    z_score DOUBLE PRECISION,
-    is_anomaly BOOLEAN,
-    anomaly_confidence DOUBLE PRECISION,
+    id BIGSERIAL,
+    window_start TIMESTAMPTZ NOT NULL,
+    window_end TIMESTAMPTZ NOT NULL,
+    analysis_data JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (id, created_at)
 );
