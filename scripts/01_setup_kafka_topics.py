@@ -16,7 +16,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Kafka broker address
-KAFKA_BROKER = 'localhost:9092'
+KAFKA_BROKER = 'localhost:9092,localhost:9093,localhost:9094,localhost:9095'
 
 # Topics to create
 TOPICS = {
@@ -49,19 +49,19 @@ TOPICS = {
 
 def wait_for_kafka(max_retries: int = 30, retry_interval: int = 2) -> bool:
     """Wait for Kafka to be ready (using Docker)"""
-    logger.info(f"Waiting for Kafka broker (docker: kafka) to be ready...")
+    logger.info(f"Waiting for Kafka brokers to be ready...")
     
     for attempt in range(max_retries):
         try:
-            # Use docker exec to test Kafka connection inside the container
+            # Use docker exec on kafka-broker-1 to test Kafka connection
             result = subprocess.run(
-                ['docker', 'exec', 'kafka', 'kafka-broker-api-versions',
-                 '--bootstrap-server', 'kafka:29092'],
+                ['docker', 'exec', 'kafka-broker-1', 'kafka-broker-api-versions',
+                 '--bootstrap-server', 'kafka-broker-1:29092'],
                 capture_output=True,
                 timeout=5
             )
             if result.returncode == 0:
-                logger.info("Kafka broker is ready")
+                logger.info("Kafka brokers are ready")
                 return True
         except Exception:
             pass
@@ -70,7 +70,7 @@ def wait_for_kafka(max_retries: int = 30, retry_interval: int = 2) -> bool:
             logger.info(f"  Attempt {attempt + 1}/{max_retries}: Kafka not ready, retrying in {retry_interval}s...")
             time.sleep(retry_interval)
         else:
-            logger.error(f"Kafka broker not ready after {max_retries} attempts")
+            logger.error(f"Kafka brokers not ready after {max_retries} attempts")
             return False
     
     return False
@@ -80,8 +80,8 @@ def create_topic(topic_name: str, partitions: int, replication_factor: int) -> b
     try:
         # Check if topic already exists using Docker
         result = subprocess.run(
-            ['docker', 'exec', 'kafka', 'kafka-topics',
-             '--bootstrap-server', 'kafka:29092',
+            ['docker', 'exec', 'kafka-broker-1', 'kafka-topics',
+             '--bootstrap-server', 'kafka-broker-1:29092',
              '--list'],
             capture_output=True,
             text=True,
@@ -94,8 +94,8 @@ def create_topic(topic_name: str, partitions: int, replication_factor: int) -> b
         
         # Create topic using Docker with longer timeout
         result = subprocess.run(
-            ['docker', 'exec', 'kafka', 'kafka-topics',
-             '--bootstrap-server', 'kafka:29092',
+            ['docker', 'exec', 'kafka-broker-1', 'kafka-topics',
+             '--bootstrap-server', 'kafka-broker-1:29092',
              '--create',
              '--topic', topic_name,
              '--partitions', str(partitions),

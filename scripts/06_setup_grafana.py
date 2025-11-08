@@ -2,6 +2,8 @@
 Grafana Dashboard Setup Script
 Automatically configures Grafana data source and creates dashboards via API
 
+Automatically detects if running inside Docker or locally
+
 Usage:
     python scripts/06_setup_grafana.py
 """
@@ -10,6 +12,8 @@ import requests
 import json
 import time
 import logging
+import os
+import sys
 from typing import Dict, Any, Optional
 
 logging.basicConfig(
@@ -18,17 +22,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Grafana configuration
-GRAFANA_URL = 'http://localhost:3001'
-GRAFANA_USER = 'admin'
-GRAFANA_PASSWORD = 'admin'
+# Import config loader for environment detection
+sys.path.insert(0, os.path.dirname(__file__))
+from config_loader import get_db_config, get_grafana_config
 
-# TimescaleDB configuration
-DB_HOST = 'timescaledb'
-DB_PORT = 5432
-DB_NAME = 'flead'
-DB_USER = 'flead'
-DB_PASSWORD = 'password'
+# Grafana configuration - auto-detect Docker vs local
+grafana_config = get_grafana_config()
+db_config = get_db_config()
+
+GRAFANA_URL = grafana_config['url']
+GRAFANA_USER = grafana_config['user']
+GRAFANA_PASSWORD = grafana_config['password']
+
+# TimescaleDB configuration - auto-detect Docker vs local
+# When setting datasource, use timescaledb for both Docker and local (Docker DNS resolves it)
+DB_HOST = db_config['host']
+DB_PORT = db_config['port']
+DB_NAME = db_config['database']
+DB_USER = db_config['user']
+DB_PASSWORD = db_config['password']
+
+logger.info(f"Grafana URL: {GRAFANA_URL}")
+logger.info(f"Database Config: host={DB_HOST}, port={DB_PORT}")
+
 
 
 class GrafanaConfigurator:

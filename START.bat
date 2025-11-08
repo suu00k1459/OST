@@ -48,46 +48,10 @@ echo.
 
 echo Cleaning up old Docker containers...
 call docker-compose down 2>nul
-call docker container rm -f zookeeper kafka timescaledb grafana kafka-ui flink-jobmanager flink-taskmanager spark-master spark-worker-1 2>nul
+call docker container rm -f zookeeper kafka timescaledb grafana kafka-ui flink-jobmanager flink-taskmanager spark-master spark-worker-1 kafka-broker-1 kafka-broker-2 kafka-broker-3 kafka-broker-4 2>nul
 echo Done
 echo.
 
-REM ===================================================
-REM STEP 3: PYTHON DEPENDENCIES
-REM ===================================================
-echo ====================================================================
-echo PYTHON SETUP PHASE
-echo ====================================================================
-echo.
-
-echo Installing Python dependencies...
-call python -m pip install --upgrade pip setuptools wheel
-if errorlevel 1 (
-    echo [ERROR] Failed to upgrade pip/setuptools.
-    pause
-    exit /b 1
-)
-
-echo Installing from requirements.txt...
-call pip install --no-cache-dir -r requirements.txt
-if errorlevel 1 (
-    echo [ERROR] Failed to install dependencies from requirements.txt
-    pause
-    exit /b 1
-)
-
-if exist "scripts\install_dependencies.py" (
-    echo Running install_dependencies.py...
-    call python scripts\install_dependencies.py
-    if errorlevel 1 (
-        echo [WARNING] install_dependencies.py encountered issues
-    )
-) else (
-    echo [WARNING] install_dependencies.py not found
-)
-
-echo Done
-echo.
 
 REM ===================================================
 REM STEP 4: DOCKER SERVICES STARTUP
@@ -217,4 +181,3 @@ echo.
 echo Press Ctrl+C to stop all services
 echo.
 pause
-

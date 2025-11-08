@@ -1,35 +1,140 @@
 services:
     # -------------------------------------------
-    # Kafka - Message Broker (KRaft mode, no Zookeeper)
+    # Kafka Multi-Broker Cluster (KRaft mode - 4 brokers)
+    # Simulates real IoT environment with 2400 devices distributed across 4 brokers
+    # Broker 1: 600 devices, Broker 2: 600 devices, Broker 3: 600 devices, Broker 4: 600 devices
     # -------------------------------------------
-    kafka:
+
+    # Broker 1 - Port 9092/29092 (Controller + Broker)
+    kafka-broker-1:
         image: confluentinc/cp-kafka:7.6.1
-        container_name: kafka
+        container_name: kafka-broker-1
         ports:
             - "9092:9092"
             - "29092:29092"
         environment:
-            # CLUSTER_ID is required - Kafka KRaft mode needs a cluster ID environment variable to bootstrap itself
-            # No security protocol defined for listener CONTROLLER - Kafka was trying to use a CONTROLLER listener,
-            # but the security protocol map didn't tell it what protocol to use.
-            # It's like saying "listen on port 29093" but not saying "use PLAINTEXT" or "use SSL"
             CLUSTER_ID: 4L6g3nQlTjGEKK1RVAx_vQ
             KAFKA_BROKER_ID: 1
-            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-1:29092,PLAINTEXT_HOST://localhost:9092
             KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
             KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
             KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
             KAFKA_PROCESS_ROLES: broker,controller
             KAFKA_NODE_ID: 1
-            KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
-            KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
+            KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker-1:29093,2@kafka-broker-2:29094,3@kafka-broker-3:29095
+            KAFKA_LISTENERS: PLAINTEXT://kafka-broker-1:29092,CONTROLLER://kafka-broker-1:29093,PLAINTEXT_HOST://0.0.0.0:9092
             KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-            KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+            KAFKA_LOG_DIRS: /var/lib/kafka/data
         volumes:
-            - kafka_data:/var/lib/kafka/data
+            - kafka_broker_1_data:/var/lib/kafka/data
         networks:
             - flead_network
+        healthcheck:
+            test: ["CMD", "sh", "-c", "echo 'ok'"]
+            interval: 5s
+            timeout: 3s
+            retries: 3
+            start_period: 30s
+
+    # Broker 2 - Port 9093/29093 (Controller + Broker)
+    kafka-broker-2:
+        image: confluentinc/cp-kafka:7.6.1
+        container_name: kafka-broker-2
+        ports:
+            - "9093:9093"
+            - "29093:29093"
+        environment:
+            CLUSTER_ID: 4L6g3nQlTjGEKK1RVAx_vQ
+            KAFKA_BROKER_ID: 2
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-2:29093,PLAINTEXT_HOST://localhost:9093
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+            KAFKA_PROCESS_ROLES: broker,controller
+            KAFKA_NODE_ID: 2
+            KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker-1:29093,2@kafka-broker-2:29094,3@kafka-broker-3:29095
+            KAFKA_LISTENERS: PLAINTEXT://kafka-broker-2:29093,CONTROLLER://kafka-broker-2:29094,PLAINTEXT_HOST://0.0.0.0:9093
+            KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+            KAFKA_LOG_DIRS: /var/lib/kafka/data
+        volumes:
+            - kafka_broker_2_data:/var/lib/kafka/data
+        networks:
+            - flead_network
+        depends_on:
+            kafka-broker-1:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD", "sh", "-c", "echo 'ok'"]
+            interval: 5s
+            timeout: 3s
+            retries: 3
+            start_period: 30s
+
+    # Broker 3 - Port 9094/29094 (Controller + Broker)
+    kafka-broker-3:
+        image: confluentinc/cp-kafka:7.6.1
+        container_name: kafka-broker-3
+        ports:
+            - "9094:9094"
+            - "29094:29094"
+        environment:
+            CLUSTER_ID: 4L6g3nQlTjGEKK1RVAx_vQ
+            KAFKA_BROKER_ID: 3
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-3:29094,PLAINTEXT_HOST://localhost:9094
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+            KAFKA_PROCESS_ROLES: broker,controller
+            KAFKA_NODE_ID: 3
+            KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker-1:29093,2@kafka-broker-2:29094,3@kafka-broker-3:29095
+            KAFKA_LISTENERS: PLAINTEXT://kafka-broker-3:29094,CONTROLLER://kafka-broker-3:29095,PLAINTEXT_HOST://0.0.0.0:9094
+            KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+            KAFKA_LOG_DIRS: /var/lib/kafka/data
+        volumes:
+            - kafka_broker_3_data:/var/lib/kafka/data
+        networks:
+            - flead_network
+        depends_on:
+            kafka-broker-2:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD", "sh", "-c", "echo 'ok'"]
+            interval: 5s
+            timeout: 3s
+            retries: 3
+            start_period: 30s
+
+    # Broker 4 - Port 9095/29095 (Broker only - not a controller)
+    kafka-broker-4:
+        image: confluentinc/cp-kafka:7.6.1
+        container_name: kafka-broker-4
+        ports:
+            - "9095:9095"
+            - "29095:29095"
+        environment:
+            CLUSTER_ID: 4L6g3nQlTjGEKK1RVAx_vQ
+            KAFKA_BROKER_ID: 4
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-4:29095,PLAINTEXT_HOST://localhost:9095
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+            KAFKA_PROCESS_ROLES: broker
+            KAFKA_NODE_ID: 4
+            KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker-1:29093,2@kafka-broker-2:29094,3@kafka-broker-3:29095
+            KAFKA_LISTENERS: PLAINTEXT://kafka-broker-4:29095,PLAINTEXT_HOST://0.0.0.0:9095
+            KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+            KAFKA_LOG_DIRS: /var/lib/kafka/data
+        volumes:
+            - kafka_broker_4_data:/var/lib/kafka/data
+        networks:
+            - flead_network
+        depends_on:
+            kafka-broker-3:
+                condition: service_healthy
         healthcheck:
             test: ["CMD", "sh", "-c", "echo 'ok'"]
             interval: 5s
@@ -44,13 +149,19 @@ services:
         image: provectuslabs/kafka-ui:latest
         container_name: kafka-ui
         depends_on:
-            kafka:
+            kafka-broker-1:
+                condition: service_healthy
+            kafka-broker-2:
+                condition: service_healthy
+            kafka-broker-3:
+                condition: service_healthy
+            kafka-broker-4:
                 condition: service_healthy
         ports:
             - "8081:8080"
         environment:
             KAFKA_CLUSTERS_0_NAME: flead-cluster
-            KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+            KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095
         networks:
             - flead_network
 
@@ -110,7 +221,7 @@ services:
     flink-jobmanager:
         build:
             context: .
-            dockerfile: Dockerfile.flink
+            dockerfile: docker/Dockerfile.flink
         container_name: flink-jobmanager
         command: jobmanager
         ports:
@@ -129,7 +240,13 @@ services:
         networks:
             - flead_network
         depends_on:
-            kafka:
+            kafka-broker-1:
+                condition: service_healthy
+            kafka-broker-2:
+                condition: service_healthy
+            kafka-broker-3:
+                condition: service_healthy
+            kafka-broker-4:
                 condition: service_healthy
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:8081/"]
@@ -141,13 +258,19 @@ services:
     flink-taskmanager:
         build:
             context: .
-            dockerfile: Dockerfile.flink
+            dockerfile: docker/Dockerfile.flink
         container_name: flink-taskmanager
         command: taskmanager
         depends_on:
             flink-jobmanager:
                 condition: service_healthy
-            kafka:
+            kafka-broker-1:
+                condition: service_healthy
+            kafka-broker-2:
+                condition: service_healthy
+            kafka-broker-3:
+                condition: service_healthy
+            kafka-broker-4:
                 condition: service_healthy
         environment:
             - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
@@ -170,7 +293,7 @@ services:
     spark-master:
         build:
             context: .
-            dockerfile: Dockerfile.spark
+            dockerfile: docker/Dockerfile.spark
         container_name: spark-master
         command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
         environment:
@@ -188,7 +311,13 @@ services:
         networks:
             - flead_network
         depends_on:
-            kafka:
+            kafka-broker-1:
+                condition: service_healthy
+            kafka-broker-2:
+                condition: service_healthy
+            kafka-broker-3:
+                condition: service_healthy
+            kafka-broker-4:
                 condition: service_healthy
             timescaledb:
                 condition: service_healthy
@@ -202,7 +331,7 @@ services:
     spark-worker-1:
         build:
             context: .
-            dockerfile: Dockerfile.spark
+            dockerfile: docker/Dockerfile.spark
         container_name: spark-worker-1
         command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
         environment:
@@ -222,8 +351,147 @@ services:
             spark-master:
                 condition: service_healthy
 
+    # -------------------------------------------
+    # Database Initialization - One-time setup
+    # -------------------------------------------
+    database-init:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.database-init
+        container_name: database-init
+        environment:
+            - DB_HOST=timescaledb
+            - DB_PORT=5432
+            - DB_NAME=flead
+            - DB_USER=flead
+            - DB_PASSWORD=password
+        depends_on:
+            timescaledb:
+                condition: service_healthy
+        networks:
+            - flead_network
+        restart: "no" # Run only once
+
+    # -------------------------------------------
+    # Grafana Setup - One-time initialization
+    # -------------------------------------------
+    grafana-init:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.grafana-init
+        container_name: grafana-init
+        environment:
+            - GRAFANA_URL=http://grafana:3000
+            - GRAFANA_USER=admin
+            - GRAFANA_PASSWORD=admin
+            - DB_HOST=timescaledb
+            - DB_PORT=5432
+            - DB_NAME=flead
+            - DB_USER=flead
+            - DB_PASSWORD=password
+        depends_on:
+            grafana:
+                condition: service_healthy
+            database-init:
+                condition: service_completed_successfully
+        networks:
+            - flead_network
+        restart: "no" # Run only once
+
+    # -------------------------------------------
+    # Kafka Producer - Streams CSV data to Kafka
+    # Distributes 2400 devices across 4 brokers: 600 per broker
+    # -------------------------------------------
+    kafka-producer:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.producer
+        container_name: kafka-producer
+        environment:
+            - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095
+            - DATA_PATH=/app/data/processed
+            - PYTHONUNBUFFERED=1
+        depends_on:
+            kafka-broker-1:
+                condition: service_healthy
+            kafka-broker-2:
+                condition: service_healthy
+            kafka-broker-3:
+                condition: service_healthy
+            kafka-broker-4:
+                condition: service_healthy
+            database-init:
+                condition: service_completed_successfully
+        volumes:
+            - ./data/processed:/app/data/processed:ro # Read-only mount
+        networks:
+            - flead_network
+        restart: unless-stopped
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "python",
+                    "-c",
+                    "from kafka import KafkaProducer; KafkaProducer(bootstrap_servers='kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095')",
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
+
+    # -------------------------------------------
+    # Federated Aggregation Service - Aggregates models from all 4 brokers
+    # -------------------------------------------
+    federated-aggregator:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.aggregator
+        container_name: federated-aggregator
+        environment:
+            - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095
+            - DB_HOST=timescaledb
+            - DB_PORT=5432
+            - DB_NAME=flead
+            - DB_USER=flead
+            - DB_PASSWORD=password
+            - PYTHONUNBUFFERED=1
+        depends_on:
+            kafka-broker-1:
+                condition: service_healthy
+            kafka-broker-2:
+                condition: service_healthy
+            kafka-broker-3:
+                condition: service_healthy
+            kafka-broker-4:
+                condition: service_healthy
+            timescaledb:
+                condition: service_healthy
+            database-init:
+                condition: service_completed_successfully
+        volumes:
+            - ./models:/app/models # Persist models
+        networks:
+            - flead_network
+        restart: unless-stopped
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "python",
+                    "-c",
+                    "from kafka import KafkaProducer; import psycopg2; psycopg2.connect(host='timescaledb', user='flead', password='password', database='flead')",
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
+
 volumes:
-    kafka_data:
+    kafka_broker_1_data:
+    kafka_broker_2_data:
+    kafka_broker_3_data:
+    kafka_broker_4_data:
     timescaledb_data:
     flink_jobmanager_data:
     flink_taskmanager_data:

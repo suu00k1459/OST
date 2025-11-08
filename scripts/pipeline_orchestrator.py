@@ -32,7 +32,7 @@ LOG_DIR = ROOT_DIR / 'logs'
 LOG_DIR.mkdir(exist_ok=True)
 
 # Kafka configuration
-KAFKA_BROKER = 'localhost:9092'
+KAFKA_BROKER = 'localhost:9092,localhost:9093,localhost:9094,localhost:9095'
 
 # Component timeouts (seconds)
 COMPONENT_STARTUP_TIMEOUT = 30
@@ -57,11 +57,9 @@ SERVICES = {
     },
     'kafka_producer': {
         'description': 'Kafka Producer (Stream IoT Data)',
-        'command': ['python', str(SCRIPTS_DIR / '02_kafka_producer.py'),
+        'command': ['python', str(SCRIPTS_DIR / '02_kafka_producer_multi_broker.py'),
                    '--source', str(ROOT_DIR / 'data' / 'processed'),
-                   '--mode', 'all-devices',
-                   '--rate', '5',
-                   '--repeat'],
+                   '--rate', '5'],
         'log_file': 'kafka_producer.log',
         'critical': True,
         'background': True,
@@ -170,7 +168,7 @@ class PipelineOrchestrator:
     def check_docker_services(self) -> bool:
         """Check if Docker services are running"""
         logger.info("Checking Docker services...")
-        required_services = ['kafka', 'timescaledb', 'flink-jobmanager', 'spark-master']
+        required_services = ['kafka-broker-1', 'kafka-broker-2', 'kafka-broker-3', 'kafka-broker-4', 'timescaledb', 'flink-jobmanager', 'spark-master']
         
         try:
             result = subprocess.run(

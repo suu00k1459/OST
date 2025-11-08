@@ -6,12 +6,16 @@ Implements Federated Averaging (FedAvg) algorithm
 Subscribes to: local-model-updates topic
 Publishes to: global-model-updates topic
 Stores to: TimescaleDB (federated_models table)
+
+Automatically detects if running inside Docker or locally
 """
 
 import json
 import logging
 import threading
 import time
+import os
+import sys
 from typing import Dict, List, Any
 from datetime import datetime
 from collections import defaultdict
@@ -29,18 +33,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Configuration
-KAFKA_BROKER = 'localhost:9092'
+# Import config loader for environment detection
+sys.path.insert(0, os.path.dirname(__file__))
+from config_loader import get_db_config, get_kafka_config
+
+# Configuration - auto-detect Docker vs local
+kafka_config = get_kafka_config()
+db_config = get_db_config()
+
+KAFKA_BROKER = kafka_config['bootstrap_servers']
 INPUT_TOPIC = 'local-model-updates'
 OUTPUT_TOPIC = 'global-model-updates'
 CONSUMER_GROUP = 'federated-aggregation'
 
-# TimescaleDB configuration
-DB_HOST = 'localhost'
-DB_PORT = 5432
-DB_NAME = 'flead'
-DB_USER = 'flead'
-DB_PASSWORD = 'password'
+# TimescaleDB configuration - auto-detect Docker vs local
+DB_HOST = db_config['host']
+DB_PORT = db_config['port']
+DB_NAME = db_config['database']
+DB_USER = db_config['user']
+DB_PASSWORD = db_config['password']
+
+logger.info(f"Kafka Broker: {KAFKA_BROKER}")
+logger.info(f"Database Config: host={DB_HOST}, port={DB_PORT}, database={DB_NAME}, user={DB_USER}")
+
 
 # Model storage
 MODELS_DIR = Path('models')
