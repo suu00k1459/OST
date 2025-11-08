@@ -1,10 +1,5 @@
 # Multi-Broker Kafka Architecture for IoT Simulation
 
-## Overview
-
-The system has been upgraded from a single Kafka broker to a 4-broker cluster to simulate real-world distributed IoT environments as required by the professor.
-
-**Key Point:** With 2400 IoT devices, a single broker is unrealistic. 4 brokers distributed across different ports better represents actual IoT deployment scenarios.
 
 ## Architecture
 
