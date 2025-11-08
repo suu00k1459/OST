@@ -38,6 +38,23 @@ echo OK
 echo.
 
 REM ===================================================
+REM STEP 2: PREPARE DATA (Convert chunks to CSV if needed)
+REM ===================================================
+
+echo Step 3: Preparing data...
+if not exist "data\processed\device_0.csv" (
+    echo   No device CSV files found, converting from chunks...
+    call python scripts\convert_chunks_to_device_csvs.py
+    if errorlevel 1 (
+        echo [WARNING] Data conversion failed, but continuing anyway...
+    )
+) else (
+    echo   Device CSV files already exist, skipping conversion...
+)
+echo OK
+echo.
+
+REM ===================================================
 REM STEP 2: CLEANUP PHASE
 REM ===================================================
 echo.
