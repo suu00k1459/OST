@@ -49,7 +49,7 @@ DB_CONFIG = {
 }
 
 # Kafka (for streaming)
-KAFKA_BROKER = 'kafka:29092'
+KAFKA_BROKER = 'kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095'
 
 # Spark
 SPARK_MASTER = 'spark://spark-master:7077'

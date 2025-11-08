@@ -47,14 +47,14 @@ def get_kafka_config() -> Dict[str, str]:
     is_docker = os.path.exists('/.dockerenv')
     
     if is_docker:
-        # Inside Docker: use service name
+        # Inside Docker: use service names for all 4 brokers
         return {
-            'bootstrap_servers': os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'kafka:29092')
+            'bootstrap_servers': os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095')
         }
     else:
-        # Outside Docker: use localhost
+        # Outside Docker: use localhost for all 4 brokers
         return {
-            'bootstrap_servers': os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+            'bootstrap_servers': os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092,localhost:9093,localhost:9094,localhost:9095')
         }
 
 def get_grafana_config() -> Dict[str, str]:

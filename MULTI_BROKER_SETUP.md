@@ -139,12 +139,6 @@ Each broker has its own volume:
 scripts/02_kafka_producer_multi_broker.py
 ```
 
-### Usage
-
-```bash
-python scripts/02_kafka_producer_multi_broker.py --source data/processed --rate 10
-```
-
 ### Key Features
 
 -   **Multi-Broker Connection:** Connects to all 4 brokers simultaneously
@@ -170,37 +164,6 @@ Broker 4 (port 29095): 600 devices
   Device range: device_1800 - device_2399
 ```
 
-## Streams & Topics
-
-### Topic: edge-iiot-stream
-
--   **Producers:** kafka-producer (sends 10 msgs/sec)
--   **Consumers:**
-    -   Flink (real-time anomaly detection)
-    -   Federated-aggregator (model updates)
--   **Partitions:** 4 (one per broker, automatic)
--   **Replication:** 3 (across brokers)
--   **Message Format:** JSON with device_id, timestamp, sensor data
-
-### Topic: local-model-updates
-
--   Produced by: Flink (local training)
--   Consumed by: federated-aggregator
-
-### Topic: global-model-updates
-
--   Produced by: federated-aggregator (FedAvg)
--   Consumed by: Spark analytics
-
-## Simulation Realism
-
-### Why 4 Brokers?
-
-1. **Fault Tolerance:** If one broker fails, system continues (3 replicas)
-2. **Load Balancing:** 600 devices per broker (realistic distribution)
-3. **Scalability:** Easy to add more brokers in future
-4. **Real-world Scenario:** Matches typical enterprise IoT deployments
-5. **Academic Requirements:** Meets professor's specification for proper IoT simulation
 
 ### Data Flow Across Brokers
 
@@ -216,11 +179,7 @@ Flink JobManager (processes all messages)
 Aggregator Service (processes all messages)
 ```
 
-## Startup Command
 
-```bash
-docker-compose up -d
-```
 
 This will:
 

@@ -45,7 +45,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration
-KAFKA_BROKER = 'kafka:29092'  # Docker internal network
+KAFKA_BROKER = 'kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095'  # Docker internal network with all 4 brokers
 INPUT_TOPIC = 'edge-iiot-stream'
 ANOMALY_OUTPUT_TOPIC = 'anomalies'
 MODEL_UPDATE_TOPIC = 'local-model-updates'
