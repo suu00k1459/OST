@@ -43,15 +43,28 @@ logger = logging.getLogger(__name__)
 class MultiBrokerProducer:
     """Kafka producer distributing data across 4 brokers"""
     
-    # Broker configuration (Docker internal addresses)
-    BROKERS = {
-        'broker_1': 'localhost:9092',
-        'broker_2': 'localhost:9093',
-        'broker_3': 'localhost:9094',
-        'broker_4': 'localhost:9095'
-    }
+    # Detect environment and set appropriate addresses
+    _IS_DOCKER = os.path.exists('/.dockerenv')
     
-    BROKER_BOOTSTRAP_SERVERS = "localhost:9092,localhost:9093,localhost:9094,localhost:9095"
+    # Broker configuration (auto-detect environment)
+    if _IS_DOCKER:
+        # Inside Docker: use container names with internal ports
+        BROKERS = {
+            'broker_1': 'kafka-broker-1:29092',
+            'broker_2': 'kafka-broker-2:29093',
+            'broker_3': 'kafka-broker-3:29094',
+            'broker_4': 'kafka-broker-4:29095'
+        }
+        BROKER_BOOTSTRAP_SERVERS = "kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095"
+    else:
+        # Outside Docker: use localhost with external ports
+        BROKERS = {
+            'broker_1': 'localhost:9092',
+            'broker_2': 'localhost:9093',
+            'broker_3': 'localhost:9094',
+            'broker_4': 'localhost:9095'
+        }
+        BROKER_BOOTSTRAP_SERVERS = "localhost:9092,localhost:9093,localhost:9094,localhost:9095"
     
     # Device distribution
     DEVICES_PER_BROKER = 600

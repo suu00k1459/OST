@@ -186,6 +186,31 @@ echo   docker-compose restart
 echo.
 echo ====================================================================
 echo.
+echo LAUNCHING WEB INTERFACES
+echo ====================================================================
+echo.
+
+REM Wait a moment for services to fully stabilize
+timeout /t 3 /nobreak
+
+REM Launch all dashboards in browser
+echo Opening dashboards in your browser...
+start http://localhost:8081
+timeout /t 1 /nobreak
+start http://localhost:3001
+timeout /t 1 /nobreak
+start http://localhost:8161
+timeout /t 1 /nobreak
+start http://localhost:8086
+timeout /t 1 /nobreak
+start http://localhost:8087
+timeout /t 1 /nobreak
+start http://localhost:5001
+
+echo.
+echo ====================================================================
+echo All dashboards opened! 
 echo Press Ctrl+C to stop monitoring, or wait for user input.
+echo ====================================================================
 echo.
 pause
