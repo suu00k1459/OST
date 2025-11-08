@@ -127,16 +127,13 @@ docker-compose logs --tail 10 2^>nul
 echo.
 
 REM ===================================================
-REM ===================================================
-REM STEP 5: START PIPELINE ORCHESTRATOR
+REM STEP 5: SUBMIT PIPELINE JOBS (FLINK + SPARK)
 REM ===================================================
 echo.
 echo ====================================================================
-echo STARTING COMPLETE FLEAD PIPELINE
+echo STARTING PIPELINE ORCHESTRATOR
 echo ====================================================================
 echo.
-
-echo Starting Pipeline Orchestrator...
 echo This will:
 echo   - Setup Kafka topics
 echo   - Start Kafka Producer (IoT data streaming)
@@ -147,10 +144,93 @@ echo.
 echo Pipeline logs will be saved to: logs/
 echo.
 
-REM Run the pipeline orchestrator
-python scripts\pipeline_orchestrator.py
+python scripts/pipeline_orchestrator.py
 
-REM If orchestrator exits, perform cleanup
+REM ===================================================
+REM STEP 6: ALL SERVICES NOW RUNNING
+REM ===================================================
+echo ====================================================================
+echo ALL DOCKER SERVICES RUNNING
+echo ====================================================================
 echo.
-echo Orchestrator stopped. Shutting down...
+
+echo All pipeline components are now running inside Docker containers:
+echo   - Kafka (4 brokers with multi-broker architecture)
+echo   - Producer (streaming 2400 IoT devices across brokers)
+echo   - Flink (real-time local training)
+echo   - Federated Aggregator (global model)
+echo   - Spark (batch analytics)
+echo   - Monitoring Dashboard (real-time status)
+echo   - Device Viewer (web interface)
+echo   - TimescaleDB (time-series database)
+echo   - Grafana (visualization)
+echo.
+echo All setup and initialization is complete!
+echo.
+
+REM ===================================================
+REM FINAL STATUS
+REM ===================================================
+echo.
+echo ====================================================================
+echo PLATFORM STARTUP COMPLETE - ALL SERVICES IN DOCKER
+echo ====================================================================
+echo.
+echo ACCESS POINTS:
+echo   Live Monitoring:          http://localhost:5001
+echo   Grafana Dashboard:        http://localhost:3001  (admin/admin)
+echo   Kafka UI:                 http://localhost:8081
+echo   Device Viewer Website:    http://localhost:8082
+echo   Flink Dashboard:          http://localhost:8161
+echo   Spark Master:             http://localhost:8086
+echo   TimescaleDB:              localhost:5432
+echo.
+echo PIPELINE COMPONENTS:
+echo   Kafka Producer:          STREAMING IoT Data (Docker)
+echo   Flink:                   Real-time Local Training (Docker)
+echo   Federated Aggregation:   Global Model (Docker)
+echo   Spark Analytics:         Batch Processing (Docker)
+echo.
+echo LOG FILES:
+echo   View logs in real-time:
+echo   docker-compose logs -f
+echo.
+echo STATUS CHECK:
+echo   docker-compose ps
+echo.
+echo STOP ALL SERVICES:
+echo   docker-compose down
+echo.
+echo RESTART SERVICES:
+echo   docker-compose restart
+echo.
+echo ====================================================================
+echo.
+echo LAUNCHING WEB INTERFACES
+echo ====================================================================
+echo.
+
+REM Wait a moment for services to fully stabilize
+timeout /t 3 /nobreak
+
+REM Launch all dashboards in browser
+echo Opening dashboards in your browser...
+start http://localhost:8081
+timeout /t 1 /nobreak
+start http://localhost:3001
+timeout /t 1 /nobreak
+start http://localhost:8161
+timeout /t 1 /nobreak
+start http://localhost:8086
+timeout /t 1 /nobreak
+start http://localhost:8087
+timeout /t 1 /nobreak
+start http://localhost:5001
+
+echo.
+echo ====================================================================
+echo All dashboards opened! 
+echo Press Ctrl+C to stop monitoring, or wait for user input.
+echo ====================================================================
+echo.
 pause
