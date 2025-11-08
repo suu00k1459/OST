@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY scripts/ scripts/
-COPY website/ website/
+COPY device-viewer/ device-viewer/
 COPY config/ config/
 COPY data/ data/
 
@@ -28,6 +28,6 @@ RUN mkdir -p logs
 # Expose port for Flask app
 EXPOSE 5000
 
-# Change to website directory and run Flask app
-WORKDIR /app/website
+# Change to device-viewer directory and run Flask app
+WORKDIR /app/device-viewer
 CMD ["python", "app.py"]
