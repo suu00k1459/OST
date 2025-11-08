@@ -127,37 +127,33 @@ docker-compose logs --tail 10 2^>nul
 echo.
 
 REM ===================================================
-REM STEP 5: PIPELINE ORCHESTRATOR (COMPLETE PIPELINE)
+REM STEP 5: ALL SERVICES NOW RUNNING IN DOCKER
 REM ===================================================
 echo ====================================================================
-echo STARTING COMPLETE FLEAD PIPELINE
+echo ALL DOCKER SERVICES RUNNING
 echo ====================================================================
 echo.
 
-echo Starting Pipeline Orchestrator...
-echo This will:
-echo   - Setup Kafka topics
-echo   - Start Kafka Producer (IoT data streaming)
-echo   - Start Flink Local Training (real-time anomaly detection)
-echo   - Start Federated Aggregation (global model)
-echo   - Start Spark Batch Analytics (historical trends)
+echo All pipeline components are now running inside Docker containers:
+echo   - Kafka (4 brokers with multi-broker architecture)
+echo   - Producer (streaming 2400 IoT devices across brokers)
+echo   - Flink (real-time local training)
+echo   - Federated Aggregator (global model)
+echo   - Spark (batch analytics)
+echo   - Monitoring Dashboard (real-time status)
+echo   - Device Viewer (web interface)
+echo   - TimescaleDB (time-series database)
+echo   - Grafana (visualization)
 echo.
-echo Pipeline logs will be saved to: logs/
+echo All setup and initialization is complete!
 echo.
-
-python scripts\pipeline_orchestrator.py
-if errorlevel 1 (
-    echo [ERROR] Pipeline orchestrator failed
-    pause
-    exit /b 1
-)
 
 REM ===================================================
 REM FINAL STATUS
 REM ===================================================
 echo.
 echo ====================================================================
-echo PLATFORM STARTUP COMPLETE
+echo PLATFORM STARTUP COMPLETE - ALL SERVICES IN DOCKER
 echo ====================================================================
 echo.
 echo ACCESS POINTS:
@@ -170,14 +166,26 @@ echo   Spark Master:             http://localhost:8086
 echo   TimescaleDB:              localhost:5432
 echo.
 echo PIPELINE COMPONENTS:
-echo   Kafka Producer:          STREAMING IoT Data
-echo   Flink:                   Real-time Local Training (Anomaly Detection)
-echo   Federated Aggregation:   Global Model via FedAvg
-echo   Spark Analytics:         Batch Processing (Trends, Predictions)
+echo   Kafka Producer:          STREAMING IoT Data (Docker)
+echo   Flink:                   Real-time Local Training (Docker)
+echo   Federated Aggregation:   Global Model (Docker)
+echo   Spark Analytics:         Batch Processing (Docker)
 echo.
 echo LOG FILES:
-echo   See logs/ directory for detailed component logs
+echo   View logs in real-time:
+echo   docker-compose logs -f
 echo.
-echo Press Ctrl+C to stop all services
+echo STATUS CHECK:
+echo   docker-compose ps
+echo.
+echo STOP ALL SERVICES:
+echo   docker-compose down
+echo.
+echo RESTART SERVICES:
+echo   docker-compose restart
+echo.
+echo ====================================================================
+echo.
+echo Press Ctrl+C to stop monitoring, or wait for user input.
 echo.
 pause

@@ -487,6 +487,77 @@ services:
             retries: 3
             start_period: 10s
 
+    # -------------------------------------------
+    # Device Viewer - Flask Web Interface (Containerized)
+    # -------------------------------------------
+    device-viewer:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.device-viewer
+        container_name: device-viewer
+        environment:
+            - DB_HOST=timescaledb
+            - DB_PORT=5432
+            - DB_NAME=flead
+            - DB_USER=flead
+            - DB_PASSWORD=password
+            - FLASK_ENV=production
+            - PORT=5000
+            - PYTHONUNBUFFERED=1
+        depends_on:
+            timescaledb:
+                condition: service_healthy
+            database-init:
+                condition: service_completed_successfully
+        ports:
+            - "8082:5000"
+        volumes:
+            - ./data/processed:/app/data/processed:ro
+        networks:
+            - flead_network
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 10s
+
+    # -------------------------------------------
+    # Monitoring Dashboard - Real-time Monitoring (Containerized)
+    # -------------------------------------------
+    monitoring-dashboard:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.monitoring-dashboard
+        container_name: monitoring-dashboard
+        environment:
+            - DB_HOST=timescaledb
+            - DB_PORT=5432
+            - DB_NAME=flead
+            - DB_USER=flead
+            - DB_PASSWORD=password
+            - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095
+            - PYTHONUNBUFFERED=1
+        depends_on:
+            kafka-broker-1:
+                condition: service_healthy
+            timescaledb:
+                condition: service_healthy
+            database-init:
+                condition: service_completed_successfully
+        ports:
+            - "5001:5001"
+        networks:
+            - flead_network
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:5001/"]
+            interval: 15s
+            timeout: 5s
+            retries: 3
+            start_period: 15s
+
 volumes:
     kafka_broker_1_data:
     kafka_broker_2_data:
