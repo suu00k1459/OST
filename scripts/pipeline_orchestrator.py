@@ -126,7 +126,7 @@ SERVICES = {
     },
     'device_viewer': {
         'description': 'Device Viewer Website (Flask Web Interface)',
-        'command': ['python', str(ROOT_DIR / 'website' / 'app.py')],
+        'command': ['python', str(ROOT_DIR / 'device-viewer' / 'app.py')],
         'log_file': 'device_viewer.log',
         'critical': False,  # Not critical for core pipeline
         'background': True,
