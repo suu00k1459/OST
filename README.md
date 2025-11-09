@@ -2,7 +2,7 @@
 
 ## Deployment Architecture
 
-The FLEAD platform utilizes a fully containerized Docker approach with a 4-broker Kafka cluster to simulate realistic distributed IoT environments. All components (Kafka, Flink, Spark, TimescaleDB, Grafana) run in isolated Docker containers, eliminating local environment setup complexities and ensuring cross-platform compatibility.
+The FLEAD platform employs a fully containerized Docker approach, utilizing a 4-broker Kafka cluster to simulate realistic, distributed IoT environments. All components (Kafka, Flink, Spark, TimescaleDB, and Grafana) run in isolated Docker containers, eliminating the complexities of local environment setup and ensuring cross-platform compatibility.
 
 ### Multi-Broker Kafka Architecture
 
@@ -13,7 +13,7 @@ The system implements a 4-broker Kafka cluster distributing 2400 IoT devices acr
 -   **Broker 3** (Port 29094/9094): Devices 1200-1799 (600 devices)
 -   **Broker 4** (Port 29095/9095): Devices 1800-2399 (600 devices)
 
-This distribution provides fault tolerance (replication factor 3), load balancing, and realistic representation of enterprise-scale IoT deployments with independent data streams per broker.
+This distribution provides fault tolerance (replication factor 3), load balancing, and a realistic representation of enterprise-scale IoT deployments with independent data streams per broker.
 
 ### Docker-Only Approach
 
@@ -22,7 +22,7 @@ All components run in Docker containers with no local Python dependencies requir
 1. Discovers and loads all 2400 device CSV files from data/processed/
 2. Maps devices to brokers using device_id modulo 4
 3. Connects to all 4 bootstrap servers simultaneously
-4. Streams messages randomly across all devices at configurable rate
+4. Streams messages randomly across all devices at a configurable rate
 5. Routes each message to its assigned broker partition
 
 This approach eliminates NumPy compilation issues on Windows and ensures identical deployment across Windows, macOS, and Linux.
@@ -35,13 +35,13 @@ This approach eliminates NumPy compilation issues on Windows and ensures identic
 
 ![Device Viewer](/Device%20Viewer.PNG)
 
-## Pipline Moniter
+## Pipeline Monitor
 
 ![Pipline Moniter](/Moniter.PNG)
 
 **Key Features:**
 
--   Real-time streaming data processing with 4-broker Apache Kafka cluster
+-   Real-time streaming data processing with a 4-broker Apache Kafka cluster
 -   Distributed model training on 2400 IoT devices using Apache Flink
 -   Federated model aggregation using FedAvg algorithm
 -   Time-series analytics with TimescaleDB and Apache Spark
@@ -65,7 +65,7 @@ This platform uses the Edge-IIoTset dataset, which contains network traffic and 
 
 -   **Source**: [Edge-IIoTset on Kaggle](https://www.kaggle.com/datasets/sibasispradhan/edge-iiotset-dataset)
 -   **Preprocessing Notebook**: [Data Preprocessing](https://www.kaggle.com/code/imedbenmadi/notebookf27d2cfbac)
--   **Features**: 60+ network traffic features including TCP, MQTT, DNS, and HTTP metrics
+-   **Features**: 60+ network traffic features, including TCP, MQTT, DNS, and HTTP metrics
 -   **Devices**: 2407 preprocessed device CSV files
 
 ## Docker Deployment Guide
@@ -200,7 +200,7 @@ This platform uses the Edge-IIoTset dataset, which contains network traffic and 
 
 -   **Source**: [Edge-IIoTset on Kaggle](https://www.kaggle.com/datasets/sibasispradhan/edge-iiotset-dataset)
 -   **Preprocessing Notebook**: [Data Preprocessing](https://www.kaggle.com/code/imedbenmadi/notebookf27d2cfbac)
--   **Features**: 60+ network traffic features including TCP, MQTT, DNS, and HTTP metrics
+-   **Features**: 60+ network traffic features, including TCP, MQTT, DNS, and HTTP metrics
 -   **Devices**: 2407 preprocessed device CSV files
 
 ## Run the Project
@@ -330,14 +330,14 @@ Result: Each broker receives exactly 600 devices with independent data streams:
 -   Broker 3: device_1200 → device_1799
 -   Broker 4: device_1800 → device_2399
 
-All Kafka consumers (Flink, Spark, Aggregator) connect to all 4 brokers via bootstrap servers, ensuring access to complete dataset regardless of broker failures (with replication factor 3).
+All Kafka consumers (Flink, Spark, Aggregator) connect to all four brokers via bootstrap servers, ensuring access to the complete dataset regardless of broker failures (with a replication factor of 3).
 
 ### Component Pipeline
 
 -   **Kafka Producer**: Streams 10 messages/second from randomly selected devices across all 4 brokers.
 -   **Local Training (Flink)**: Each device trains using Z-score anomaly detection on data from its assigned broker.
 -   **Federated Aggregation**: Aggregates local models using FedAvg algorithm after receiving 20 device updates.
--   **Spark Analytics**: Processes data from all brokers and stores results in TimescaleDB. Grafana displays real-time dashboards with 30-second refresh.
+-   **Spark Analytics**: Processes data from all brokers and stores results in TimescaleDB. Grafana displays real-time dashboards with a 30-second refresh.
 
 ### 1. Data Streaming (Multi-Broker)
 
