@@ -27,5 +27,10 @@ ENV DB_NAME=flead
 ENV DB_USER=flead
 ENV DB_PASSWORD=password
 
+# Add startup script to wait for DB before running init
+RUN echo '#!/bin/bash\n\
+sleep 5\n\
+python scripts/00_init_database.py' > /app/startup.sh && chmod +x /app/startup.sh
+
 # Run database initialization and exit
-CMD ["python", "scripts/00_init_database.py"]
+CMD ["/app/startup.sh"]

@@ -121,9 +121,11 @@ CREATE INDEX idx_model_evaluations_version ON model_evaluations(global_version);
 """
 
 
-def wait_for_database(max_retries: int = 30, retry_interval: int = 2) -> bool:
-    """Wait for TimescaleDB to be ready"""
+def wait_for_database(max_retries: int = 60, retry_interval: int = 2) -> bool:
+    """Wait for TimescaleDB to be ready with improved retry logic"""
     logger.info("Waiting for TimescaleDB to be ready...")
+    logger.info(f"Connection details: host={DB_HOST}:{DB_PORT}, database={DB_NAME}, user={DB_USER}")
+    logger.info(f"Max retries: {max_retries} (total wait time: ~{max_retries * retry_interval}s)")
     
     for i in range(max_retries):
         try:
@@ -133,18 +135,41 @@ def wait_for_database(max_retries: int = 30, retry_interval: int = 2) -> bool:
                 database=DB_NAME,
                 user=DB_USER,
                 password=DB_PASSWORD,
-                connect_timeout=5
+                connect_timeout=10  # Increased from 5 to 10 seconds
             )
             conn.close()
-            logger.info("✓ TimescaleDB is ready")
+            logger.info("✓ TimescaleDB is ready and user authenticated")
+            time.sleep(2)  # Extra delay to ensure full initialization
             return True
         except psycopg2.OperationalError as e:
+            error_msg = str(e)
+            attempt_num = i + 1
+            
+            # Check if this is an authentication error
+            if "password authentication failed" in error_msg or "FATAL" in error_msg:
+                if attempt_num % 10 == 0:  # Log every 10 attempts
+                    logger.info(f"  Waiting for user authentication to be ready... ({attempt_num}/{max_retries})")
+                    logger.debug(f"    PostgreSQL is still initializing the user account")
+            else:
+                if attempt_num % 10 == 0:
+                    logger.info(f"  Waiting for database connection... ({attempt_num}/{max_retries})")
+            
             if i < max_retries - 1:
-                logger.info(f"  Waiting for database... ({i+1}/{max_retries})")
                 time.sleep(retry_interval)
             else:
                 logger.error(f"✗ Could not connect to database after {max_retries} attempts")
-                logger.error(f"  Error: {e}")
+                logger.error(f"  Error: {error_msg}")
+                logger.error(f"")
+                logger.error(f"  ❌ If you see 'password authentication failed':")
+                logger.error(f"     - The database user is not fully initialized yet")
+                logger.error(f"     - Run: docker-compose down -v")
+                logger.error(f"     - Then: docker-compose up -d")
+                logger.error(f"")
+                logger.error(f"  Troubleshooting:")
+                logger.error(f"    1. Check if Docker is running: docker ps")
+                logger.error(f"    2. Check timescaledb logs: docker logs timescaledb -f")
+                logger.error(f"    3. Verify credentials match in docker-compose.yml and init.sql")
+                logger.error(f"    4. Check if volume is corrupted: docker volume ls | grep timescaledb")
                 return False
     
     return False

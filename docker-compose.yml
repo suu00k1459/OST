@@ -166,8 +166,6 @@ services:
             - flead_network
 
     # -------------------------------------------
-    # TimescaleDB - Time-Series Database
-    # -------------------------------------------
     timescaledb:
         image: timescale/timescaledb-ha:pg16
         container_name: timescaledb
@@ -181,11 +179,16 @@ services:
             - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
             - timescaledb_data:/var/lib/postgresql/data
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U flead -d flead -h localhost"]
+            # REAL FIX: Check that user can authenticate, not just that port is open
+            test:
+                [
+                    "CMD-SHELL",
+                    "pg_isready -U flead -d flead -h localhost && psql -U flead -d flead -h localhost -c 'SELECT 1' >/dev/null 2>&1",
+                ]
             interval: 5s
             timeout: 10s
-            retries: 20
-            start_period: 30s
+            retries: 30
+            start_period: 60s
         networks:
             - flead_network
 
