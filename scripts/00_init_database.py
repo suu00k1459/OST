@@ -2,11 +2,14 @@
 Database Initialization Script
 Creates all required tables in TimescaleDB for the FLEAD pipeline
 Run this BEFORE starting the pipeline to ensure database schema exists
+
+Automatically detects if running inside Docker or locally
 """
 
 import psycopg2
 import logging
 import time
+import os
 from typing import Optional
 
 logging.basicConfig(
@@ -15,12 +18,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Database configuration
-DB_HOST = 'localhost'
-DB_PORT = 5432
-DB_NAME = 'flead'
-DB_USER = 'flead'
-DB_PASSWORD = 'password'
+# Import config loader for environment detection
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+from config_loader import get_db_config
+
+# Database configuration - auto-detect Docker vs local
+db_config = get_db_config()
+DB_HOST = db_config['host']
+DB_PORT = db_config['port']
+DB_NAME = db_config['database']
+DB_USER = db_config['user']
+DB_PASSWORD = db_config['password']
+
+logger.info(f"Database Config: host={DB_HOST}, port={DB_PORT}, database={DB_NAME}, user={DB_USER}")
 
 # SQL statements for table creation
 CREATE_TABLES_SQL = """

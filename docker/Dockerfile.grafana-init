@@ -1,0 +1,33 @@
+# Dockerfile for Grafana Setup
+# One-time setup to configure Grafana dashboards
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application files
+COPY scripts/config_loader.py ./scripts/
+COPY scripts/06_setup_grafana.py ./scripts/
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV GRAFANA_URL=http://grafana:3000
+ENV GRAFANA_USER=admin
+ENV GRAFANA_PASSWORD=admin
+ENV DB_HOST=timescaledb
+ENV DB_PORT=5432
+ENV DB_NAME=flead
+ENV DB_USER=flead
+ENV DB_PASSWORD=password
+
+# Run Grafana setup and exit
+CMD ["python", "scripts/06_setup_grafana.py"]

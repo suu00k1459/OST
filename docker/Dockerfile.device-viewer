@@ -1,0 +1,33 @@
+# Device Viewer Website Service  
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    postgresql-client \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY scripts/ scripts/
+COPY device-viewer/ device-viewer/
+COPY config/ config/
+COPY data/ data/
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose port for Flask app
+EXPOSE 5000
+
+# Change to device-viewer directory and run Flask app
+WORKDIR /app/device-viewer
+CMD ["python", "app.py"]

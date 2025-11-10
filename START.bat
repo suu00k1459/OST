@@ -38,6 +38,23 @@ echo OK
 echo.
 
 REM ===================================================
+REM STEP 2: PREPARE DATA (Convert chunks to CSV if needed)
+REM ===================================================
+
+echo Step 3: Preparing data...
+if not exist "data\processed\device_0.csv" (
+    echo   No device CSV files found, converting from chunks...
+    call python scripts\convert_chunks_to_device_csvs.py
+    if errorlevel 1 (
+        echo [WARNING] Data conversion failed, but continuing anyway...
+    )
+) else (
+    echo   Device CSV files already exist, skipping conversion...
+)
+echo OK
+echo.
+
+REM ===================================================
 REM STEP 2: CLEANUP PHASE
 REM ===================================================
 echo.
@@ -48,46 +65,10 @@ echo.
 
 echo Cleaning up old Docker containers...
 call docker-compose down 2>nul
-call docker container rm -f zookeeper kafka timescaledb grafana kafka-ui flink-jobmanager flink-taskmanager spark-master spark-worker-1 2>nul
+call docker container rm -f zookeeper kafka timescaledb grafana kafka-ui flink-jobmanager flink-taskmanager spark-master spark-worker-1 kafka-broker-1 kafka-broker-2 kafka-broker-3 kafka-broker-4 2>nul
 echo Done
 echo.
 
-REM ===================================================
-REM STEP 3: PYTHON DEPENDENCIES
-REM ===================================================
-echo ====================================================================
-echo PYTHON SETUP PHASE
-echo ====================================================================
-echo.
-
-echo Installing Python dependencies...
-call python -m pip install --upgrade pip setuptools wheel
-if errorlevel 1 (
-    echo [ERROR] Failed to upgrade pip/setuptools.
-    pause
-    exit /b 1
-)
-
-echo Installing from requirements.txt...
-call pip install --no-cache-dir -r requirements.txt
-if errorlevel 1 (
-    echo [ERROR] Failed to install dependencies from requirements.txt
-    pause
-    exit /b 1
-)
-
-if exist "scripts\install_dependencies.py" (
-    echo Running install_dependencies.py...
-    call python scripts\install_dependencies.py
-    if errorlevel 1 (
-        echo [WARNING] install_dependencies.py encountered issues
-    )
-) else (
-    echo [WARNING] install_dependencies.py not found
-)
-
-echo Done
-echo.
 
 REM ===================================================
 REM STEP 4: DOCKER SERVICES STARTUP
@@ -163,14 +144,13 @@ docker-compose logs --tail 10 2^>nul
 echo.
 
 REM ===================================================
-REM STEP 5: PIPELINE ORCHESTRATOR (COMPLETE PIPELINE)
+REM STEP 5: SUBMIT PIPELINE JOBS (FLINK + SPARK)
 REM ===================================================
+echo.
 echo ====================================================================
-echo STARTING COMPLETE FLEAD PIPELINE
+echo STARTING PIPELINE ORCHESTRATOR
 echo ====================================================================
 echo.
-
-echo Starting Pipeline Orchestrator...
 echo This will:
 echo   - Setup Kafka topics
 echo   - Start Kafka Producer (IoT data streaming)
@@ -181,19 +161,36 @@ echo.
 echo Pipeline logs will be saved to: logs/
 echo.
 
-python scripts\pipeline_orchestrator.py
-if errorlevel 1 (
-    echo [ERROR] Pipeline orchestrator failed
-    pause
-    exit /b 1
-)
+python scripts/pipeline_orchestrator.py
+
+REM ===================================================
+REM STEP 6: ALL SERVICES NOW RUNNING
+REM ===================================================
+echo ====================================================================
+echo ALL DOCKER SERVICES RUNNING
+echo ====================================================================
+echo.
+
+echo All pipeline components are now running inside Docker containers:
+echo   - Kafka (4 brokers with multi-broker architecture)
+echo   - Producer (streaming 2400 IoT devices across brokers)
+echo   - Flink (real-time local training)
+echo   - Federated Aggregator (global model)
+echo   - Spark (batch analytics)
+echo   - Monitoring Dashboard (real-time status)
+echo   - Device Viewer (web interface)
+echo   - TimescaleDB (time-series database)
+echo   - Grafana (visualization)
+echo.
+echo All setup and initialization is complete!
+echo.
 
 REM ===================================================
 REM FINAL STATUS
 REM ===================================================
 echo.
 echo ====================================================================
-echo PLATFORM STARTUP COMPLETE
+echo PLATFORM STARTUP COMPLETE - ALL SERVICES IN DOCKER
 echo ====================================================================
 echo.
 echo ACCESS POINTS:
@@ -206,15 +203,51 @@ echo   Spark Master:             http://localhost:8086
 echo   TimescaleDB:              localhost:5432
 echo.
 echo PIPELINE COMPONENTS:
-echo   Kafka Producer:          STREAMING IoT Data
-echo   Flink:                   Real-time Local Training (Anomaly Detection)
-echo   Federated Aggregation:   Global Model via FedAvg
-echo   Spark Analytics:         Batch Processing (Trends, Predictions)
+echo   Kafka Producer:          STREAMING IoT Data (Docker)
+echo   Flink:                   Real-time Local Training (Docker)
+echo   Federated Aggregation:   Global Model (Docker)
+echo   Spark Analytics:         Batch Processing (Docker)
 echo.
 echo LOG FILES:
-echo   See logs/ directory for detailed component logs
+echo   View logs in real-time:
+echo   docker-compose logs -f
 echo.
-echo Press Ctrl+C to stop all services
+echo STATUS CHECK:
+echo   docker-compose ps
+echo.
+echo STOP ALL SERVICES:
+echo   docker-compose down
+echo.
+echo RESTART SERVICES:
+echo   docker-compose restart
+echo.
+echo ====================================================================
+echo.
+echo LAUNCHING WEB INTERFACES
+echo ====================================================================
+echo.
+
+REM Wait a moment for services to fully stabilize
+timeout /t 3 /nobreak
+
+REM Launch all dashboards in browser
+echo Opening dashboards in your browser...
+start http://localhost:8081
+timeout /t 1 /nobreak
+start http://localhost:3001
+timeout /t 1 /nobreak
+start http://localhost:8161
+timeout /t 1 /nobreak
+start http://localhost:8086
+timeout /t 1 /nobreak
+start http://localhost:8087
+timeout /t 1 /nobreak
+start http://localhost:5001
+
+echo.
+echo ====================================================================
+echo All dashboards opened! 
+echo Press Ctrl+C to stop monitoring, or wait for user input.
+echo ====================================================================
 echo.
 pause
-
