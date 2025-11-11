@@ -160,7 +160,7 @@ def wait_for_database(max_retries: int = 60, retry_interval: int = 2) -> bool:
                 logger.error(f"✗ Could not connect to database after {max_retries} attempts")
                 logger.error(f"  Error: {error_msg}")
                 logger.error(f"")
-                logger.error(f"  ❌ If you see 'password authentication failed':")
+                logger.error(f"   If you see 'password authentication failed':")
                 logger.error(f"     - The database user is not fully initialized yet")
                 logger.error(f"     - Run: docker-compose down -v")
                 logger.error(f"     - Then: docker-compose up -d")

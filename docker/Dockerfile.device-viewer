@@ -1,26 +1,25 @@
 # Device Viewer Website Service  
+# Optimized: Uses volumes for data and scripts instead of COPY
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (minimal)
 RUN apt-get update && apt-get install -y \
-    gcc \
     postgresql-client \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Copy only requirements and application code
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY scripts/ scripts/
+# Copy only application code (NOT data)
 COPY device-viewer/ device-viewer/
 COPY config/ config/
-COPY data/ data/
+
+# Data and scripts are mounted as volumes in docker-compose.yml
+# This keeps the image small (~500MB instead of 5GB)
 
 # Create logs directory
 RUN mkdir -p logs

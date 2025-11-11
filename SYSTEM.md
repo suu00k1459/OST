@@ -1304,31 +1304,3 @@ Grafana (visualizes)
 | **Spark**       | Analytics         | Model evaluation  | Global models  | Accuracy scores |
 | **TimescaleDB** | Time-series DB    | Data storage      | All components | SQL queries     |
 | **Grafana**     | Visualization     | Dashboard         | SQL queries    | Live dashboard  |
-
----
-
-## FOR YOUR DEFENSE
-
-**Opening Statement:**
-
-> "FLEAD is a federated learning system that trains machine learning models on 2,407 IoT devices without sending raw data to a central server. Each device learns locally using Stochastic Gradient Descent, devices share only model updates via Kafka, and a Federated Aggregation service combines them into a global model achieving 72.7% anomaly detection accuracy."
-
-**When asked "How do components connect?":**
-
-> "Kafka acts as the central message hub. Flink consumes raw data, trains local models per device, and publishes model updates. Federated Aggregation reads these updates and uses FedAvg to create a global model. Spark evaluates the global model on real data, Spark results go to TimescaleDB, and Grafana visualizes everything with SQL queries."
-
-**When asked "Why Kafka?":**
-
-> "Kafka decouples components so they can run independently. If Flink slows down, Kafka buffers data. If Aggregation crashes, Kafka has persistent data. It's the nervous system that keeps everything coordinated."
-
-**When asked "What's special about FedAvg?":**
-
-> "FedAvg weights each device's contribution by the number of samples it processed. This is fairer than simple averaging - a device with 500 samples influences more than one with 50 samples. Plus, it's privacy-preserving - we never touch raw data."
-
-**When asked "How do you know it works?":**
-
-> "Spark continuously evaluates our global models on real test data and calculates true accuracy metrics. We store 70+ model versions in TimescaleDB and can see accuracy improving from 65% to 72.7% across versions."
-
----
-
-**Good luck with your defense! You've built something genuinely impressive.** 🚀

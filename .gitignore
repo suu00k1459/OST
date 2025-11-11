@@ -32,3 +32,4 @@ next
 __pycache__
 logs oo
 data.rar
+build_output.log

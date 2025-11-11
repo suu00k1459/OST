@@ -243,7 +243,7 @@ def main():
     elif passed >= 3:
         print(f"  {YELLOW}⚠️  PARTIAL: {passed}/{total} components working. Some services may need attention.{RESET}")
     else:
-        print(f"  {RED}❌ ISSUES DETECTED: Only {passed}/{total} components working.{RESET}")
+        print(f"  {RED} ISSUES DETECTED: Only {passed}/{total} components working.{RESET}")
     
     print(f"\n{CYAN}{BOLD}{'='*70}")
     print(f"  Access Points:")

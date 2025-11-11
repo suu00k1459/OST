@@ -222,9 +222,7 @@ services:
     # NOTE: Custom build with Python and PyFlink installed
     # -------------------------------------------
     flink-jobmanager:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile.flink
+        image: imedbenmadi/ost-2-flink-jobmanager:v1.0 
         container_name: flink-jobmanager
         command: jobmanager
         ports:
@@ -252,16 +250,15 @@ services:
             kafka-broker-4:
                 condition: service_healthy
         healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:8081/"]
+            # Simpler healthcheck - just check if port is open
+            test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/6123"]
             interval: 10s
             timeout: 5s
-            retries: 5
-            start_period: 60s
+            retries: 10
+            start_period: 90s
 
     flink-taskmanager:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile.flink
+        image: imedbenmadi/ost-2-flink-taskmanager:v1.0 
         container_name: flink-taskmanager
         command: taskmanager
         depends_on:
@@ -294,9 +291,7 @@ services:
     # Apache Spark - Batch Analytics (Custom build with packages installed)
     # -------------------------------------------
     spark-master:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile.spark
+        image: imedbenmadi/ost-2-spark-master:v1.0 
         container_name: spark-master
         command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
         environment:
@@ -332,9 +327,7 @@ services:
             start_period: 60s
 
     spark-worker-1:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile.spark
+        image: imedbenmadi/ost-2-spark-worker-1:v1.0 
         container_name: spark-worker-1
         command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
         environment:
@@ -358,9 +351,7 @@ services:
     # Database Initialization - One-time setup
     # -------------------------------------------
     database-init:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile.database-init
+        image: imedbenmadi/ost-2-database-init:v1.0 
         container_name: database-init
         environment:
             - DB_HOST=timescaledb
@@ -379,9 +370,7 @@ services:
     # Grafana Setup - One-time initialization
     # -------------------------------------------
     grafana-init:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile.grafana-init
+        image: imedbenmadi/ost-2-grafana-init:v1.0 
         container_name: grafana-init
         environment:
             - GRAFANA_URL=http://grafana:3000
@@ -406,9 +395,7 @@ services:
     # Distributes 2400 devices across 4 brokers: 600 per broker
     # -------------------------------------------
     kafka-producer:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile.producer
+        image: imedbenmadi/ost-2-kafka-producer:v1.0 # Change imedbenmadi to your Docker Hub username!
         container_name: kafka-producer
         environment:
             - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095
@@ -447,9 +434,7 @@ services:
     # Federated Aggregation Service - Aggregates models from all 4 brokers
     # -------------------------------------------
     federated-aggregator:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile.aggregator
+        image: imedbenmadi/ost-2-federated-aggregator:v1.0 
         container_name: federated-aggregator
         environment:
             - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095
@@ -494,9 +479,7 @@ services:
     # Device Viewer - Flask Web Interface (Containerized)
     # -------------------------------------------
     device-viewer:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile.device-viewer
+        image: imedbenmadi/ost-2-device-viewer:v1.0 
         container_name: device-viewer
         environment:
             - DB_HOST=timescaledb
@@ -530,9 +513,7 @@ services:
     # Monitoring Dashboard - Real-time Monitoring (Containerized)
     # -------------------------------------------
     monitoring-dashboard:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile.monitoring-dashboard
+        image: imedbenmadi/ost-2-monitoring-dashboard:v1.0 
         container_name: monitoring-dashboard
         environment:
             - DB_HOST=timescaledb

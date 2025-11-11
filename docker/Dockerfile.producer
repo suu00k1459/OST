@@ -1,27 +1,25 @@
 # Dockerfile for Kafka Producer Service
-# Reads CSV files and streams to Kafka
+# Optimized: Data is mounted as volume, not copied into image
+# Reduces image from 3.7GB to ~500MB
 
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install only necessary system dependencies
 RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
+# Copy ONLY application scripts (NOT data)
 COPY scripts/config_loader.py ./scripts/
 COPY scripts/02_kafka_producer_multi_broker.py ./scripts/
 
-# Copy data files
-COPY data/processed ./data/processed/
+# Data directory is mounted as volume in docker-compose.yml
+# This keeps image size small while allowing access to data
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

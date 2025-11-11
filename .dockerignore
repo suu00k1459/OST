@@ -1,0 +1,68 @@
+# Prevent large files from being sent to Docker daemon
+# This speeds up builds and prevents accidental copies
+
+# Data files (should be mounted as volumes, not copied)
+data/
+*.csv
+*.parquet
+
+# Large files
+*.zip
+*.tar.gz
+*.7z
+
+# Version control
+.git
+.gitignore
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# Python cache
+__pycache__
+*.pyc
+.pytest_cache
+*.egg-info
+dist/
+build/
+
+# Node modules (if any)
+node_modules/
+
+# Docker files (not needed inside image)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+*.md
+README.md
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache
+.pytest_cache
+
+# Temporary files
+*.tmp
+temp/
