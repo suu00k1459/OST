@@ -444,6 +444,27 @@ services:
             start_period: 10s
 
     # -------------------------------------------
+    # Kafka to TimescaleDB Collector
+    # Directly collects IoT data from Kafka and writes to database
+    # Provides real-time data for Grafana visualization
+    # -------------------------------------------
+    timescaledb-collector:
+        build:
+            context: .
+            dockerfile: docker/Dockerfile.timescaledb-collector
+        container_name: timescaledb-collector
+        depends_on:
+            kafka-producer:
+                condition: service_healthy
+            timescaledb:
+                condition: service_healthy
+        environment:
+            - PYTHONUNBUFFERED=1
+        networks:
+            - flead_network
+        restart: unless-stopped
+
+    # -------------------------------------------
     # Federated Aggregation Service - Aggregates models from all 4 brokers
     # -------------------------------------------
     federated-aggregator:

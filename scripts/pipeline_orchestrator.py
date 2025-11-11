@@ -63,7 +63,7 @@ SERVICES = {
         'log_file': 'kafka_producer.log',
         'critical': True,
         'background': True,
-        'startup_delay': 5
+        'startup_delay': 30
     },
     'flink_training': {
         'description': 'Flink Local Model Training (Real-time Streaming)',
@@ -300,14 +300,15 @@ class PipelineOrchestrator:
         
         # Start services in order
         startup_order = [
-            'database_init',          # Stage 0: Initialize database schema
+            'database_init',          # Stage 0: Initialize database schema (Docker)
             'kafka_topics',           # Stage 1: Create Kafka topics (HOST)
-            'kafka_producer',         # Stage 2: Stream data (HOST)
-            'flink_training',         # Stage 3: Real-time ML (Docker: Flink)
-            'federated_aggregation',  # Stage 4: Model aggregation (HOST with Docker network)
-            'spark_analytics',        # Stage 5: Batch analytics (Docker: Spark)
-            'monitoring_dashboard',   # Stage 6: Live monitoring dashboard (HOST)
-            'device_viewer',          # Stage 7: Web interface (HOST)
+            # NOTE: kafka_producer runs automatically in Docker container (docker-compose.yml)
+            # It's already configured with depends_on conditions for all Kafka brokers
+            'flink_training',         # Stage 2: Real-time ML training (Docker: Flink)
+            'federated_aggregation',  # Stage 3: Model aggregation (Docker)
+            'spark_analytics',        # Stage 4: Batch analytics (Docker: Spark)
+            'monitoring_dashboard',   # Stage 5: Live monitoring dashboard (Docker)
+            'device_viewer',          # Stage 6: Web interface (Docker)
             'grafana_setup'           # Stage 8: Configure Grafana dashboards (HOST)
         ]
         
