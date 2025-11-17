@@ -134,7 +134,8 @@ SERVICES = {
         'critical': False,  # Not critical for core pipeline
         'background': True,
         'startup_delay': 3,
-        'requires_docker': True
+        'requires_docker': True,
+        'skip': True  # Already managed by docker-compose, skip in orchestrator
     },
     'grafana_setup': {
         'description': 'Grafana Dashboard Configuration (Automated Setup)',
@@ -331,6 +332,15 @@ class PipelineOrchestrator:
                 continue
             
             config = SERVICES[service_name]
+            
+            # Skip services marked as already managed by docker-compose
+            if config.get('skip', False):
+                logger.info(f"\n{'='*70}")
+                logger.info(f"Skipping: {config['description']}")
+                logger.info(f"{'='*70}")
+                logger.info(f"  (Already running via docker-compose)")
+                success_count += 1
+                continue
             
             # ALL SERVICES ARE REQUIRED - DO NOT SKIP
             # Continue starting all services even if one fails
