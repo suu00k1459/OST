@@ -18,16 +18,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration from environment or defaults
-GRAFANA_URL = os.getenv('GRAFANA_URL', 'http://localhost:3000')
+GRAFANA_URL = os.getenv('GRAFANA_URL', 'http://localhost:3001')
 GRAFANA_ADMIN_USER = os.getenv('GRAFANA_ADMIN_USER', 'admin')
 GRAFANA_ADMIN_PASSWORD = os.getenv('GRAFANA_ADMIN_PASSWORD', 'admin')
 
 # Database configuration
 DB_HOST = os.getenv('TIMESCALEDB_HOST', 'timescaledb')
 DB_PORT = os.getenv('TIMESCALEDB_PORT', '5432')
-DB_NAME = os.getenv('TIMESCALEDB_NAME', 'iot_db')
-DB_USER = os.getenv('TIMESCALEDB_USER', 'iot_user')
-DB_PASSWORD = os.getenv('TIMESCALEDB_PASSWORD', 'iot_password')
+DB_NAME = os.getenv('TIMESCALEDB_NAME', 'flead')
+DB_USER = os.getenv('TIMESCALEDB_USER', 'flead')
+DB_PASSWORD = os.getenv('TIMESCALEDB_PASSWORD', 'password')
 
 # Retry configuration
 MAX_RETRIES = 30
@@ -58,10 +58,12 @@ def wait_for_grafana() -> bool:
 
 
 def get_grafana_auth_headers() -> Dict[str, str]:
-    """Get authorization headers for Grafana API"""
+    """Get authorization headers for Grafana API using basic auth"""
+    import base64
+    credentials = base64.b64encode(f"{GRAFANA_ADMIN_USER}:{GRAFANA_ADMIN_PASSWORD}".encode()).decode()
     return {
         'Content-Type': 'application/json',
-        'Authorization': f'Bearer {get_or_create_api_token()}'
+        'Authorization': f'Basic {credentials}'
     }
 
 

@@ -219,20 +219,56 @@ class FederatedAggregator:
         except Exception as e:
             logger.error(f"Error processing local model update: {e}")
     
+    def _get_db_connection(self) -> Any:
+        """Get a healthy database connection, reconnecting if needed"""
+        try:
+            # Check if connection is still valid
+            if self.db_connection and not self.db_connection.closed:
+                return self.db_connection
+            
+            # Try to reconnect
+            logger.warning("Database connection lost, attempting to reconnect...")
+            self.db_connection = psycopg2.connect(
+                host=DB_HOST,
+                port=DB_PORT,
+                database=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD
+            )
+            logger.info("✓ Reconnected to TimescaleDB")
+            return self.db_connection
+        except Exception as e:
+            logger.error(f"Failed to reconnect to database: {e}")
+            raise
+    
     def _save_local_model_to_db(self, device_id: str, model_version: int, 
                                accuracy: float, samples_processed: int) -> None:
-        """Save local model to database"""
+        """Save local model to database with automatic reconnection"""
         try:
-            with self.db_connection.cursor() as cursor:
+            conn = self._get_db_connection()
+            with conn.cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO local_models 
                     (device_id, model_version, global_version, accuracy, samples_processed)
                     VALUES (%s, %s, %s, %s, %s)
                 """, (device_id, model_version, self.global_model.version, accuracy, samples_processed))
-                self.db_connection.commit()
+                conn.commit()
+        except psycopg2.OperationalError as e:
+            # Connection error - try to recover
+            logger.warning(f"Database operational error: {e}")
+            self.db_connection = None  # Force reconnection on next attempt
+            try:
+                conn = self._get_db_connection()
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO local_models 
+                        (device_id, model_version, global_version, accuracy, samples_processed)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (device_id, model_version, self.global_model.version, accuracy, samples_processed))
+                    conn.commit()
+            except Exception as retry_error:
+                logger.error(f"Failed to save after reconnection: {retry_error}")
         except Exception as e:
-            # CRITICAL: Rollback the failed transaction to allow future operations
-            self.db_connection.rollback()
             logger.warning(f"Error saving local model to DB: {e}")
     
     def aggregate(self) -> Dict[str, Any]:
@@ -326,19 +362,33 @@ class FederatedAggregator:
             return None
     
     def _save_global_model_to_db(self, accuracy: float, num_devices: int) -> None:
-        """Save global model to database"""
+        """Save global model to database with automatic reconnection"""
         try:
-            with self.db_connection.cursor() as cursor:
+            conn = self._get_db_connection()
+            with conn.cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO federated_models 
                     (global_version, aggregation_round, num_devices, accuracy)
                     VALUES (%s, %s, %s, %s)
                 """, (self.global_model.version, self.aggregation_round, num_devices, accuracy))
-                self.db_connection.commit()
+                conn.commit()
                 logger.info(f"✓ Global model v{self.global_model.version} saved to database")
+        except psycopg2.OperationalError as e:
+            logger.warning(f"Database operational error during global model save: {e}")
+            self.db_connection = None  # Force reconnection
+            try:
+                conn = self._get_db_connection()
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO federated_models 
+                        (global_version, aggregation_round, num_devices, accuracy)
+                        VALUES (%s, %s, %s, %s)
+                    """, (self.global_model.version, self.aggregation_round, num_devices, accuracy))
+                    conn.commit()
+                    logger.info(f"✓ Global model v{self.global_model.version} saved to database after reconnection")
+            except Exception as retry_error:
+                logger.error(f"Failed to save global model after reconnection: {retry_error}")
         except Exception as e:
-            # CRITICAL: Rollback the failed transaction to allow future operations
-            self.db_connection.rollback()
             logger.warning(f"Error saving global model to DB: {e}")
 
 
