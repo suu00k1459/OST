@@ -1,4 +1,6 @@
-# Push Docker images to Docker Hub
+# Rebuild everything (base image built first, then all others use it)
+# docker-compose build
+# Push to Docker Hub (includes base + collector)
 # .\push_to_hub.ps1 -Username imedbenmadi
 
 param(
@@ -14,7 +16,9 @@ Write-Host "Pushing images to Docker Hub..." -ForegroundColor Green
 Write-Host ""
 
 $images = @(
+    "ost-2-base",
     "ost-2-kafka-producer",
+    "ost-2-timescaledb-collector",
     "ost-2-federated-aggregator",
     "ost-2-device-viewer",
     "ost-2-database-init",

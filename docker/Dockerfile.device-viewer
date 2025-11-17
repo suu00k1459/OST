@@ -1,18 +1,8 @@
 # Device Viewer Website Service  
-# Optimized: Uses volumes for data and scripts instead of COPY
-FROM python:3.11-slim
+# Optimized: Inherits from base image (avoids reinstalling packages)
+FROM imedbenmadi/ost-2-base:v1.0
 
 WORKDIR /app
-
-# Install system dependencies (minimal)
-RUN apt-get update && apt-get install -y \
-    postgresql-client \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy only requirements and application code
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy only application code (NOT data)
 COPY device-viewer/ device-viewer/

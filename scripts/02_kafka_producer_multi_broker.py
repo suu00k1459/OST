@@ -126,28 +126,44 @@ class MultiBrokerProducer:
         broker_idx = (device_num // self.DEVICES_PER_BROKER) % 4
         return broker_idx
     
-    def connect(self):
-        """Connect to all brokers in cluster"""
-        try:
-            logger.info(f"Connecting to multi-broker cluster...")
-            logger.info(f"Bootstrap servers: {self.BROKER_BOOTSTRAP_SERVERS}")
-            
-            self.producer = KafkaProducer(
-                bootstrap_servers=self.BROKER_BOOTSTRAP_SERVERS.split(','),
-                value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-                acks='all',
-                retries=5,
-                max_in_flight_requests_per_connection=1,
-                request_timeout_ms=60000,
-                partitioner=self._partition_by_broker
-            )
-            logger.info(f"Successfully connected to all 4 Kafka brokers")
-            
-        except Exception as e:
-            logger.error(f"Failed to connect to Kafka brokers: {e}")
-            logger.error(f"Ensure Docker containers are running:")
-            logger.error(f"  docker-compose up -d")
-            raise
+    def connect(self, max_retries=5, retry_delay=10):
+        """Connect to all brokers in cluster with retry logic"""
+        retry_count = 0
+        last_error = None
+        
+        while retry_count < max_retries:
+            try:
+                logger.info(f"Connecting to multi-broker cluster...")
+                logger.info(f"Bootstrap servers: {self.BROKER_BOOTSTRAP_SERVERS}")
+                
+                self.producer = KafkaProducer(
+                    bootstrap_servers=self.BROKER_BOOTSTRAP_SERVERS.split(','),
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                    acks='all',
+                    retries=5,
+                    max_in_flight_requests_per_connection=1,
+                    request_timeout_ms=60000,
+                    connections_max_idle_ms=30000,
+                    reconnect_backoff_ms=5000,
+                    partitioner=self._partition_by_broker
+                )
+                logger.info(f"Successfully connected to all 4 Kafka brokers")
+                return
+                
+            except Exception as e:
+                retry_count += 1
+                last_error = e
+                
+                if retry_count < max_retries:
+                    logger.warning(f"Connection attempt {retry_count} failed: {e}")
+                    logger.warning(f"Retrying in {retry_delay}s... ({max_retries - retry_count} attempts left)")
+                    time.sleep(retry_delay)
+                else:
+                    logger.error(f"Failed to connect to Kafka brokers after {max_retries} attempts: {last_error}")
+                    logger.error(f"Ensure Docker containers are running:")
+                    logger.error(f"  docker-compose ps")
+                    logger.error(f"  docker-compose logs kafka-broker-1")
+                    raise
     
     def _partition_by_broker(self, key, all_partitions, available_partitions):
         """Custom partitioner to route messages to appropriate broker"""
@@ -323,11 +339,12 @@ class MultiBrokerProducer:
             for message, device_id, broker_idx in message_generator:
                 try:
                     # Send message with device_id as key (for partitioning)
+                    # Note: partition is NOT specified here - kafka-python will use key-based routing
+                    # The broker_idx is embedded in the message for reference but doesn't force partition assignment
                     future = self.producer.send(
                         self.topic,
                         value=message,
-                        key=device_id.encode('utf-8'),
-                        partition=broker_idx  # Route to correct broker
+                        key=device_id.encode('utf-8')
                     )
                     future.get(timeout=10)
                     

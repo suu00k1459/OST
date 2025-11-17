@@ -1,18 +1,10 @@
 # Dockerfile for Grafana Setup
+# Optimized: Inherits from base image (avoids reinstalling packages)
 # One-time setup to configure Grafana dashboards
 
-FROM python:3.10-slim
+FROM imedbenmadi/ost-2-base:v1.0
 
 WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY scripts/config_loader.py ./scripts/

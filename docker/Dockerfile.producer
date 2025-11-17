@@ -1,18 +1,10 @@
 # Dockerfile for Kafka Producer Service
-# Optimized: Data is mounted as volume, not copied into image
-# Reduces image from 3.7GB to ~500MB
+# Optimized: Inherits from base image (avoids reinstalling packages)
+# Data is mounted as volume, not copied into image
 
-FROM python:3.11-slim
+FROM imedbenmadi/ost-2-base:v1.0
 
 WORKDIR /app
-
-# Install only necessary system dependencies
-RUN apt-get update && apt-get install -y \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy ONLY application scripts (NOT data)
 COPY scripts/config_loader.py ./scripts/

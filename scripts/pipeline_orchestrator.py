@@ -57,13 +57,15 @@ SERVICES = {
     },
     'kafka_producer': {
         'description': 'Kafka Producer (Stream IoT Data)',
-        'command': ['python', str(SCRIPTS_DIR / '02_kafka_producer_multi_broker.py'),
-                   '--source', str(ROOT_DIR / 'data' / 'processed'),
+        'command': ['docker', 'exec', 'kafka-producer',
+                   'python', '/app/scripts/02_kafka_producer_multi_broker.py',
+                   '--source', '/app/data/processed',
                    '--rate', '5'],
         'log_file': 'kafka_producer.log',
         'critical': True,
         'background': True,
-        'startup_delay': 5
+        'startup_delay': 30,
+        'requires_docker': True
     },
     'flink_training': {
         'description': 'Flink Local Model Training (Real-time Streaming)',
@@ -126,15 +128,17 @@ SERVICES = {
     },
     'device_viewer': {
         'description': 'Device Viewer Website (Flask Web Interface)',
-        'command': ['python', str(ROOT_DIR / 'device-viewer' / 'app.py')],
+        'command': ['docker', 'exec', 'device-viewer',
+                   'python', '/app/app.py'],
         'log_file': 'device_viewer.log',
         'critical': False,  # Not critical for core pipeline
         'background': True,
-        'startup_delay': 3
+        'startup_delay': 3,
+        'requires_docker': True
     },
     'grafana_setup': {
         'description': 'Grafana Dashboard Configuration (Automated Setup)',
-        'command': ['python', str(SCRIPTS_DIR / '06_setup_grafana.py')],
+        'command': ['python', str(SCRIPTS_DIR / 'setup_grafana_datasource.py')],
         'log_file': 'grafana_setup.log',
         'critical': False,  # Nice to have but not blocking
         'background': False,  # Foreground - completes quickly
@@ -302,20 +306,23 @@ class PipelineOrchestrator:
         startup_order = [
             'database_init',          # Stage 0: Initialize database schema
             'kafka_topics',           # Stage 1: Create Kafka topics (HOST)
-            'kafka_producer',         # Stage 2: Stream data (HOST)
+            'kafka_producer',         # Stage 2: Stream data (Docker: kafka-producer container)
             'flink_training',         # Stage 3: Real-time ML (Docker: Flink)
-            'federated_aggregation',  # Stage 4: Model aggregation (HOST with Docker network)
+            'federated_aggregation',  # Stage 4: Model aggregation (Docker: federated-aggregator)
             'spark_analytics',        # Stage 5: Batch analytics (Docker: Spark)
-            'monitoring_dashboard',   # Stage 6: Live monitoring dashboard (HOST)
-            'device_viewer',          # Stage 7: Web interface (HOST)
+            'monitoring_dashboard',   # Stage 6: Live monitoring dashboard (Docker)
+            'device_viewer',          # Stage 7: Web interface (Docker)
             'grafana_setup'           # Stage 8: Configure Grafana dashboards (HOST)
         ]
         
-        # NOTE: Services now properly submitted to Docker containers
-        # - kafka_topics/producer: Run on HOST (can connect to localhost:9092)
+        # NOTE: Services now properly containerized with Docker
+        # - kafka_topics: HOST (can connect to Docker network Kafka brokers)
+        # - kafka_producer: Docker container (kafka-producer service)
         # - flink_training: Submitted to flink-jobmanager container via docker exec
         # - spark_analytics: Submitted to spark-master container via docker exec
-        # - federated_aggregation: Runs on HOST but needs Docker network (to be fixed)
+        # - federated_aggregation: Docker container (federated-aggregator service)
+        # - monitoring_dashboard, device_viewer: Docker containers
+        # - grafana_setup: HOST (can connect to Docker network Grafana instance)
         
         success_count = 0
         

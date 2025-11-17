@@ -1,0 +1,23 @@
+# Base Image - Shared by all Python services
+# Installs all common dependencies once instead of in every service
+# Saves ~3GB of disk space and build time
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies (minimal, shared by all services)
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install all Python packages once (shared by all services)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# This base image is ~1.2GB
+# All other services inherit from this, adding only ~200MB each
+# Total savings: ~3-4GB compared to installing packages in every service
