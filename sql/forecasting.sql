@@ -1,0 +1,35 @@
+-- -- 1) Pipelines metadata
+-- CREATE TABLE IF NOT EXISTS forecast_pipelines (
+--     pipeline_id      SERIAL PRIMARY KEY,
+--     name             TEXT NOT NULL,
+--     model_type       TEXT NOT NULL,   -- 'LSTM', 'ARIMA', 'XGBoost', etc.
+--     horizon_minutes  INTEGER NOT NULL,
+--     target_metric    TEXT NOT NULL,   -- e.g. 'throughput', 'error_rate'
+--     created_at       TIMESTAMPTZ DEFAULT NOW()
+-- );
+
+-- -- 2) Individual forecasting runs
+-- CREATE TABLE IF NOT EXISTS forecast_runs (
+--     run_id           BIGSERIAL PRIMARY KEY,
+--     pipeline_id      INTEGER NOT NULL REFERENCES forecast_pipelines(pipeline_id),
+--     run_ts           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--     status           TEXT NOT NULL,         -- 'running', 'success', 'failed'
+--     train_start_ts   TIMESTAMPTZ,
+--     train_end_ts     TIMESTAMPTZ,
+--     metric_rmse      DOUBLE PRECISION,
+--     metric_mape      DOUBLE PRECISION,
+--     error_message    TEXT
+-- );
+
+-- -- 3) Time-series of actual vs predicted
+-- CREATE TABLE IF NOT EXISTS forecast_values (
+--     pipeline_id      INTEGER NOT NULL REFERENCES forecast_pipelines(pipeline_id),
+--     run_id           BIGINT   NOT NULL REFERENCES forecast_runs(run_id),
+--     ts               TIMESTAMPTZ NOT NULL,
+--     actual           DOUBLE PRECISION,
+--     predicted        DOUBLE PRECISION,
+--     PRIMARY KEY (pipeline_id, run_id, ts)
+-- );
+
+-- -- Turn forecast_values into a hypertable
+-- SELECT create_hypertable('forecast_values', 'ts', if_not_exists => TRUE);
