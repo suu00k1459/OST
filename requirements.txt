@@ -21,3 +21,6 @@ nbconvert>=7.14.0
 werkzeug>=3.0.0
 setuptools>=70.0.0
 numexpr>=2.8.0
+pyspark>=3.5.0
+findspark>=2.0.1
+py4j>=0.10.9
