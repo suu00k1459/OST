@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 # Database
 DB_CONFIG = {
-    'host': 'timescaledb',
+    'host': 'localhost',
     'port': 5432,
     'database': 'flead',
     'user': 'flead',
