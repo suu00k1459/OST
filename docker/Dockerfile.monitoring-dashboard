@@ -3,28 +3,25 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
 # Copy application code
+COPY monitoring_dashboard/ monitoring_dashboard/
 COPY scripts/ scripts/
 COPY config/ config/
 
-# Create logs directory
+# Install Python dependencies
+COPY monitoring_dashboard/requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
 RUN mkdir -p logs
 
-# Expose port
 EXPOSE 5001
 
-# Run monitoring dashboard
-CMD ["python", "scripts/monitoring_dashboard.py"]
+WORKDIR /app/monitoring_dashboard
+
+CMD ["python", "monitoring_dashboard.py"]
