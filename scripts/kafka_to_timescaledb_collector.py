@@ -26,7 +26,7 @@ KAFKA_TOPIC = 'edge-iiot-stream'
 GROUP_ID = 'timescaledb-collector'
 
 # Database
-DB_HOST = 'timescaledb'
+DB_HOST = 'localhost'
 DB_PORT = 5432
 DB_NAME = 'flead'
 DB_USER = 'flead'
