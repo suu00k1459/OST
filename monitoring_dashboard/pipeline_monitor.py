@@ -16,7 +16,7 @@ app = Flask(__name__)
 
 # Database configuration
 DB_CONFIG = {
-    'host': 'localhost',
+    'host': 'timescaledb',
     'port': 5432,
     'database': 'flead',
     'user': 'flead',
