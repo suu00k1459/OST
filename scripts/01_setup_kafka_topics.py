@@ -1,223 +1,232 @@
+#!/usr/bin/env python3
 """
-Setup Kafka Topics for FLEAD Pipeline
-Creates all required topics for streaming and batch processing
+01_setup_kafka_topics.py
+
+Create all Kafka topics needed by the FLEAD pipeline
+for the multi-broker cluster.
+
+This script runs on the *HOST* but uses `docker exec` to run the
+`kafka-topics` CLI *inside* a Kafka container (default: kafka-broker-1),
+so it can use Docker's internal DNS names (kafka-broker-1:9092, etc.).
+
+You can override the defaults with environment variables:
+  - KAFKA_CONTAINER
+  - KAFKA_BOOTSTRAP_INTERNAL
 """
 
-import subprocess
-import time
-import sys
+from __future__ import annotations
+
 import logging
-from typing import List
+import os
+import subprocess
+import sys
+import time
+from typing import Dict, Any, List
 
+# ---------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Kafka broker address
-KAFKA_BROKER = 'localhost:9092,localhost:9093,localhost:9094,localhost:9095'
+# ---------------------------------------------------------------------
+# Container & internal bootstrap settings
+# ---------------------------------------------------------------------
+# Which container to exec into to run kafka-topics
+KAFKA_CONTAINER = os.getenv("KAFKA_CONTAINER", "kafka-broker-1")
 
-# Topics to create
-TOPICS = {
-    'edge-iiot-stream': {
-        'partitions': 4,
-        'replication_factor': 1,
-        'description': 'Raw IoT sensor data from edge devices'
+# Which bootstrap string to use *inside* the Docker network
+# You can set this to a single broker or a comma-separated list.
+KAFKA_BOOTSTRAP_INTERNAL = os.getenv(
+    "KAFKA_BOOTSTRAP_INTERNAL",
+    "kafka-broker-1:9092",
+)
+
+# Topics used in your pipeline
+TOPICS: Dict[str, Dict[str, Any]] = {
+    "edge-iiot-stream": {
+        "partitions": 4,
+        "replication_factor": 3,
     },
-    'local-model-updates': {
-        'partitions': 4,
-        'replication_factor': 1,
-        'description': 'Local model updates per device from Flink'
+    "local-model-updates": {
+        "partitions": 4,
+        "replication_factor": 3,
     },
-    'global-model-updates': {
-        'partitions': 1,
-        'replication_factor': 1,
-        'description': 'Aggregated global model updates from federation'
+    "global-model-updates": {
+        "partitions": 4,
+        "replication_factor": 3,
     },
-    'anomalies': {
-        'partitions': 4,
-        'replication_factor': 1,
-        'description': 'Detected anomalies from Flink streaming'
+    "anomalies": {
+        "partitions": 4,
+        "replication_factor": 3,
     },
-    'analytics-results': {
-        'partitions': 2,
-        'replication_factor': 1,
-        'description': 'Batch analytics results from Spark'
-    }
+    "analytics-results": {
+        "partitions": 4,
+        "replication_factor": 3,
+    },
 }
 
-def wait_for_kafka(max_retries: int = 30, retry_interval: int = 2) -> bool:
-    """Wait for Kafka to be ready (using Docker)"""
-    logger.info(f"Waiting for Kafka brokers to be ready...")
-    
-    for attempt in range(max_retries):
-        try:
-            # Use docker exec on kafka-broker-1 to test Kafka connection
-            result = subprocess.run(
-                ['docker', 'exec', 'kafka-broker-1', 'kafka-broker-api-versions',
-                 '--bootstrap-server', 'kafka-broker-1:29092'],
-                capture_output=True,
-                timeout=5
+MAX_ATTEMPTS = 40
+SLEEP_SECONDS = 3
+
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+def run_in_container(cmd: str) -> subprocess.CompletedProcess:
+    """
+    Run a shell command *inside* the Kafka container using bash -lc.
+    """
+    docker_cmd: List[str] = [
+        "docker",
+        "exec",
+        "-i",
+        KAFKA_CONTAINER,
+        "bash",
+        "-lc",
+        cmd,
+    ]
+    logger.debug("Running in container: %s", " ".join(docker_cmd))
+    return subprocess.run(
+        docker_cmd,
+        capture_output=True,
+        text=True,
+    )
+
+
+def wait_for_kafka_cli() -> None:
+    """
+    Poll `kafka-topics --list` inside the broker container until it works.
+    """
+    logger.info("======================================================================")
+    logger.info("Kafka Topics Setup for FLEAD Pipeline (CLI via docker exec)")
+    logger.info("======================================================================")
+    logger.info(
+        "Container: %s | Internal bootstrap: %s",
+        KAFKA_CONTAINER,
+        KAFKA_BOOTSTRAP_INTERNAL,
+    )
+    logger.info(
+        "Waiting for Kafka to become reachable via CLI "
+        "(max_attempts=%d, sleep=%ds)...",
+        MAX_ATTEMPTS,
+        SLEEP_SECONDS,
+    )
+
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        logger.info(
+            "Kafka CLI connectivity check (attempt %d/%d)...",
+            attempt,
+            MAX_ATTEMPTS,
+        )
+
+        cmd = f"kafka-topics --bootstrap-server {KAFKA_BOOTSTRAP_INTERNAL} --list"
+        result = run_in_container(cmd)
+
+        if result.returncode == 0:
+            logger.info("✓ Kafka is reachable via CLI.")
+            existing = (result.stdout or "").strip()
+            if existing:
+                logger.info("Existing topics:\n%s", existing)
+            else:
+                logger.info("No topics yet (fresh cluster).")
+            return
+
+        stderr = (result.stderr or "").strip()
+        logger.warning(
+            "Kafka CLI not ready yet (rc=%s): %s. Retrying in %ds...",
+            result.returncode,
+            stderr if stderr else "<no stderr>",
+            SLEEP_SECONDS,
+        )
+        time.sleep(SLEEP_SECONDS)
+
+    msg = (
+        f"Kafka not reachable via CLI in container '{KAFKA_CONTAINER}' "
+        f"after {MAX_ATTEMPTS} attempts."
+    )
+    logger.error(msg)
+    raise RuntimeError(msg)
+
+
+def ensure_topics() -> None:
+    """
+    Ensure all topics in TOPICS exist using kafka-topics --if-not-exists.
+    """
+    logger.info(
+        "Ensuring Kafka topics exist using CLI in container '%s' "
+        "(bootstrap=%s)...",
+        KAFKA_CONTAINER,
+        KAFKA_BOOTSTRAP_INTERNAL,
+    )
+
+    # Wait until Kafka is actually ready
+    wait_for_kafka_cli()
+
+    for name, cfg in TOPICS.items():
+        partitions = int(cfg["partitions"])
+        replication_factor = int(cfg["replication_factor"])
+
+        logger.info(
+            "Ensuring topic '%s' (partitions=%d, replication_factor=%d)...",
+            name,
+            partitions,
+            replication_factor,
+        )
+
+        cmd = (
+            "kafka-topics "
+            f"--bootstrap-server {KAFKA_BOOTSTRAP_INTERNAL} "
+            "--create "
+            "--if-not-exists "
+            f"--topic {name} "
+            f"--partitions {partitions} "
+            f"--replication-factor {replication_factor}"
+        )
+
+        result = run_in_container(cmd)
+
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+        combined = f"{stdout}\n{stderr}"
+
+        if result.returncode == 0:
+            if stdout:
+                logger.info("kafka-topics output for '%s': %s", name, stdout)
+            logger.info("✓ Topic '%s' is ensured.", name)
+        elif "already exists" in combined:
+            logger.info("✓ Topic '%s' already exists.", name)
+        else:
+            logger.error(
+                "Failed to create/ensure topic '%s' (rc=%d).\nSTDOUT: %s\nSTDERR: %s",
+                name,
+                result.returncode,
+                stdout or "<empty>",
+                stderr or "<empty>",
             )
-            if result.returncode == 0:
-                logger.info("Kafka brokers are ready")
-                return True
-        except Exception:
-            pass
-        
-        if attempt < max_retries - 1:
-            logger.info(f"  Attempt {attempt + 1}/{max_retries}: Kafka not ready, retrying in {retry_interval}s...")
-            time.sleep(retry_interval)
-        else:
-            logger.error(f"Kafka brokers not ready after {max_retries} attempts")
-            return False
-    
-    return False
+            raise RuntimeError(
+                f"Failed to create topic '{name}' (rc={result.returncode}). "
+                f"See logs above."
+            )
 
-def create_topic(topic_name: str, partitions: int, replication_factor: int) -> bool:
-    """Create a single Kafka topic (using Docker)"""
+
+# ---------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------
+def main() -> int:
     try:
-        # Check if topic already exists using Docker
-        result = subprocess.run(
-            ['docker', 'exec', 'kafka-broker-1', 'kafka-topics',
-             '--bootstrap-server', 'kafka-broker-1:29092',
-             '--list'],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        if topic_name in result.stdout:
-            logger.info(f"  Topic '{topic_name}' already exists")
-            return True
-        
-        # Create topic using Docker with longer timeout
-        result = subprocess.run(
-            ['docker', 'exec', 'kafka-broker-1', 'kafka-topics',
-             '--bootstrap-server', 'kafka-broker-1:29092',
-             '--create',
-             '--topic', topic_name,
-             '--partitions', str(partitions),
-             '--replication-factor', str(replication_factor),
-             '--if-not-exists'],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        if result.returncode == 0 or 'already exists' in result.stderr or 'already exists' in result.stdout:
-            logger.info(f"  Created topic '{topic_name}' ({partitions} partitions, RF={replication_factor})")
-            return True
-        else:
-            logger.warning(f"  Could not create topic '{topic_name}': {result.stderr}")
-            # Don't fail if topic creation has any issue - topics might be auto-created
-            return True
-            
-    except subprocess.TimeoutExpired:
-        logger.warning(f"  Timeout creating topic '{topic_name}' (will be auto-created if needed)")
-        return True
-    except Exception as e:
-        logger.warning(f"  Error creating topic '{topic_name}' (will be auto-created if needed): {e}")
-        return True
-
-def list_topics() -> List[str]:
-    """List all Kafka topics (using Docker)"""
-    try:
-        result = subprocess.run(
-            ['docker', 'exec', 'kafka', 'kafka-topics',
-             '--bootstrap-server', 'kafka:29092',
-             '--list'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        
-        if result.returncode == 0:
-            topics = [t.strip() for t in result.stdout.split('\n') if t.strip()]
-            return topics
-        else:
-            logger.error(f"Error listing topics: {result.stderr}")
-            return []
-            
-    except Exception as e:
-        logger.error(f"Error listing topics: {e}")
-        return []
-
-def describe_topics() -> None:
-    """Describe all FLEAD topics (using Docker)"""
-    try:
-        topic_list = ','.join(TOPICS.keys())
-        result = subprocess.run(
-            ['docker', 'exec', 'kafka', 'kafka-topics',
-             '--bootstrap-server', 'kafka:29092',
-             '--describe',
-             '--topics', topic_list],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        if result.returncode == 0:
-            logger.info("\nTopic Details:")
-            logger.info(result.stdout)
-        else:
-            logger.warning(f"Could not describe topics: {result.stderr}")
-            
-    except subprocess.TimeoutExpired:
-        logger.warning("Timeout describing topics (this is OK, topics are created)")
-    except Exception as e:
-        logger.warning(f"Could not describe topics: {e}")
-
-def main():
-    """Main function to setup all topics"""
-    logger.info("=" * 70)
-    logger.info("Kafka Topics Setup for FLEAD Pipeline")
-    logger.info("=" * 70)
-    logger.info(f"Kafka Broker: {KAFKA_BROKER}")
-    logger.info("")
-    
-    # Wait for Kafka
-    if not wait_for_kafka():
-        logger.error("✗ Kafka is not available. Make sure Docker containers are running:")
-        logger.error("  docker-compose up -d")
-        sys.exit(1)
-    
-    logger.info("")
-    logger.info("Creating FLEAD topics...")
-    logger.info("")
-    
-    success_count = 0
-    for topic_name, config in TOPICS.items():
-        logger.info(f"Setting up topic: {topic_name}")
-        logger.info(f"  Description: {config['description']}")
-        
-        if create_topic(
-            topic_name,
-            config['partitions'],
-            config['replication_factor']
-        ):
-            success_count += 1
-        logger.info("")
-    
-    # List all topics
-    logger.info("Current Kafka Topics:")
-    all_topics = list_topics()
-    for topic in all_topics:
-        if topic not in ['__consumer_offsets', '__transaction_state']:
-            logger.info(f"  - {topic}")
-    
-    logger.info("")
-    describe_topics()
-    
-    logger.info("=" * 70)
-    logger.info(f"✓ Setup Complete: {success_count}/{len(TOPICS)} topics created")
-    logger.info("=" * 70)
-    
-    if success_count == len(TOPICS):
+        ensure_topics()
+        logger.info("======================================================================")
+        logger.info("✓ Kafka topic setup completed successfully.")
+        logger.info("======================================================================")
         return 0
-    else:
+    except Exception as e:
+        logger.error("Kafka topic setup failed: %s", e, exc_info=True)
         return 1
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     sys.exit(main())

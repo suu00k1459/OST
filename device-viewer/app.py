@@ -147,7 +147,9 @@ def device(filename):
     return render_template('device.html', filename=filename, header=header, rows=preview_rows, stats=stats)
 
 
-if __name__ == '__main__':
-    # Run on 0.0.0.0 so it's reachable from other machines if needed
-    port = int(os.environ.get('PORT', 8082))
-    app.run(host='0.0.0.0', port=port, debug=False)
+if __name__ == "__main__":
+    # Inside Docker we listen on 5000 (mapped to 8082 on the host)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"[device-viewer] Starting on 0.0.0.0:{port}")
+    app.run(host="0.0.0.0", port=port, debug=False)
+

@@ -1,24 +1,42 @@
+# docker/Dockerfile.flink
+# Flink image with Python + minimal deps for Kafka integration
+
 FROM flink:1.18-java11
 
-# Switch to root to install packages
+# Switch to root to install OS + Python packages
 USER root
 
-# Install Python and pip
+WORKDIR /opt/flink
+
+# Make pip more tolerant of slow connections
+ENV PIP_DEFAULT_TIMEOUT=300
+
+# Install Python and tools (minimal)
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip python3-dev wget && \
-    ln -sf /usr/bin/python3 /usr/bin/python && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        python3-dev \
+        wget \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages
-RUN pip3 install --no-cache-dir apache-flink==1.18.1 kafka-python
+# Copy global requirements to use as constraints (NOT full install)
+COPY requirements.txt /opt/flink/requirements.txt
 
-# Download compatible Kafka connector JARs
-RUN cd /opt/flink/lib && \
-    wget -q https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.0.2-1.18/flink-sql-connector-kafka-3.0.2-1.18.jar && \
-    wget -q https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.5.1/kafka-clients-3.5.1.jar
+# Install ONLY what Flink Python job needs (constrained by your requirements.txt)
+RUN pip3 install --no-cache-dir \
+        apache-flink==1.18.1 \
+        kafka-python \
+        -c /opt/flink/requirements.txt
 
-# Switch back to flink user
+# Make sure these dirs always exist in the image
+RUN mkdir -p /opt/flink/scripts \
+           /opt/flink/usrlib \
+           /opt/flink/models/local
+
+# Back to flink user (as in base image)
 USER flink
 
-# Use the standard entry point
+# Use the standard entry point from the base image
 ENTRYPOINT ["/docker-entrypoint.sh"]

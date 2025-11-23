@@ -3,18 +3,35 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install only the system dependencies we actually need
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Make pip more tolerant of slow downloads
+ENV PIP_DEFAULT_TIMEOUT=300
+
+# Use the global requirements.txt as constraints
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install ONLY the Python deps needed by device-viewer,
+# but constrain versions via the global requirements.txt
+RUN pip install --no-cache-dir \
+    flask \
+    flask-cors \
+    flask-socketio \
+    python-socketio \
+    python-engineio \
+    simple-websocket \
+    numpy \
+    pandas \
+    psycopg2-binary \
+    sqlalchemy \
+    python-dotenv \
+    requests \
+    -c requirements.txt
 
 # Copy application code
 COPY scripts/ scripts/

@@ -55,7 +55,7 @@ echo OK
 echo.
 
 REM ===================================================
-REM STEP 2: CLEANUP PHASE
+REM STEP 3: CLEANUP PHASE
 REM ===================================================
 echo.
 echo ====================================================================
@@ -64,11 +64,18 @@ echo ====================================================================
 echo.
 
 echo Cleaning up old Docker containers...
-call docker-compose down 2>nul
-call docker container rm -f zookeeper kafka timescaledb grafana kafka-ui flink-jobmanager flink-taskmanager spark-master spark-worker-1 kafka-broker-1 kafka-broker-2 kafka-broker-3 kafka-broker-4 2>nul
+REM Compose v2 syntax
+call docker compose down 2>nul
+
+REM Extra hard cleanup (safe even if some containers don't exist)
+call docker container rm -f zookeeper kafka timescaledb grafana kafka-ui ^
+    flink-jobmanager flink-taskmanager spark-master spark-worker-1 ^
+    kafka-broker-1 kafka-broker-2 kafka-broker-3 kafka-broker-4 ^
+    timescaledb-collector federated-aggregator device-viewer ^
+    monitoring-dashboard grafana-init database-init 2>nul
+
 echo Done
 echo.
-
 
 REM ===================================================
 REM STEP 4: DOCKER SERVICES STARTUP
@@ -79,11 +86,11 @@ echo ====================================================================
 echo.
 
 echo Starting Docker containers...
-echo This includes: Kafka, TimescaleDB, Flink, Spark, Grafana
+echo This includes: Kafka (4 brokers), TimescaleDB, Flink, Spark, Grafana, UI services
 echo.
 echo Docker logs will appear below:
 echo ====================================================================
-call docker-compose up -d
+call docker compose up -d
 echo ====================================================================
 echo.
 
@@ -95,14 +102,17 @@ set "max_wait=120"
 :wait_for_services
 set /a wait_count=!wait_count!+1
 
-REM Check if critical services are healthy
-docker-compose ps | find "kafka" | find "healthy" >nul 2>&1
+REM Check if critical services are healthy / started
+REM Kafka brokers: at least one line with "kafka-broker" and "Up"
+docker compose ps | find "kafka-broker-1" | find "Up" >nul 2>&1
 set kafka_ok=!errorlevel!
-docker-compose ps | find "timescaledb" | find "healthy" >nul 2>&1
+
+REM TimescaleDB: must be healthy (has proper healthcheck)
+docker compose ps | find "timescaledb" | find "healthy" >nul 2>&1
 set db_ok=!errorlevel!
 
 if !kafka_ok! equ 0 if !db_ok! equ 0 (
-    echo [OK] Docker services are healthy
+    echo [OK] Docker services are ready (Kafka brokers up, TimescaleDB healthy)
     goto services_ready
 )
 
@@ -110,13 +120,13 @@ if !wait_count! lss !max_wait! (
     if !wait_count! equ 1 (
         echo Attempt !wait_count!/!max_wait!...
         echo Showing Docker service status:
-        docker-compose ps
+        docker compose ps
         echo.
     ) else (
         if !wait_count! equ 30 (
             echo Still waiting... Attempt !wait_count!/!max_wait!
             echo Recent Docker logs:
-            docker-compose logs --tail 5 2^>nul
+            docker compose logs --tail 5
         )
         if !wait_count! equ 60 (
             echo Still waiting... Attempt !wait_count!/!max_wait!
@@ -136,11 +146,11 @@ echo Done
 echo.
 
 echo Current Docker container status:
-docker-compose ps
+docker compose ps
 echo.
 
 echo Showing Docker logs summary:
-docker-compose logs --tail 10 2^>nul
+docker compose logs --tail 10
 echo.
 
 REM ===================================================
@@ -152,16 +162,16 @@ echo STARTING PIPELINE ORCHESTRATOR
 echo ====================================================================
 echo.
 echo This will:
-echo   - Setup Kafka topics
-echo   - Start Kafka Producer (IoT data streaming)
-echo   - Start Flink Local Training (real-time anomaly detection)
-echo   - Start Federated Aggregation (global model)
-echo   - Start Spark Batch Analytics (historical trends)
+echo   - Submit Flink job for local training
+echo   - Submit Spark job for analytics
+echo   - Run optional Grafana setup
+echo   (Kafka Producer, Federated Aggregator, Monitoring, Device Viewer
+echo    are managed directly by Docker Compose in this version.)
 echo.
 echo Pipeline logs will be saved to: logs/
 echo.
 
-python scripts/pipeline_orchestrator.py
+python scripts\pipeline_orchestrator.py
 
 REM ===================================================
 REM STEP 6: ALL SERVICES NOW RUNNING
@@ -210,16 +220,16 @@ echo   Spark Analytics:         Batch Processing (Docker)
 echo.
 echo LOG FILES:
 echo   View logs in real-time:
-echo   docker-compose logs -f
+echo   docker compose logs -f
 echo.
 echo STATUS CHECK:
-echo   docker-compose ps
+echo   docker compose ps
 echo.
 echo STOP ALL SERVICES:
-echo   docker-compose down
+echo   docker compose down
 echo.
 echo RESTART SERVICES:
-echo   docker-compose restart
+echo   docker compose restart
 echo.
 echo ====================================================================
 echo.
@@ -243,11 +253,13 @@ timeout /t 1 /nobreak
 start http://localhost:8087
 timeout /t 1 /nobreak
 start http://localhost:5001
+timeout /t 1 /nobreak
+start http://localhost:8082
 
 echo.
 echo ====================================================================
 echo All dashboards opened! 
-echo Press Ctrl+C to stop monitoring, or wait for user input.
+echo Press any key to close this window.
 echo ====================================================================
 echo.
-pause
+pause >nul

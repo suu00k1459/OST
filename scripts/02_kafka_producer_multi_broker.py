@@ -1,19 +1,15 @@
 """
 Multi-Broker Kafka Producer for Edge-IIoT
-Distributes 2400 IoT devices across 4 Kafka brokers (600 devices per broker)
-Each broker receives data from its assigned device subset
+Distributes 2400 IoT devices across 4 Kafka brokers (600 devices per broker).
 
-Simulates real-world distributed IoT scenario where:
-- Broker 1 (port 29092): Devices 0-599
-- Broker 2 (port 29093): Devices 600-1199
-- Broker 3 (port 29094): Devices 1200-1799
-- Broker 4 (port 29095): Devices 1800-2399
+Broker mapping:
+- Broker 1: devices 0–599
+- Broker 2: devices 600–1199
+- Broker 3: devices 1200–1799
+- Broker 4: devices 1800–2399
 
 Usage:
     python scripts/02_kafka_producer_multi_broker.py --source data/processed --rate 10
-
-The producer maintains separate connections to all 4 brokers and distributes
-device messages based on device_id modulo 4.
 """
 
 import json
@@ -32,243 +28,224 @@ from kafka import KafkaProducer
 from kafka.errors import KafkaError
 import logging
 
-# Configure logging
+# -----------------------------------------------------
+# LOGGING
+# -----------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 class MultiBrokerProducer:
-    """Kafka producer distributing data across 4 brokers"""
-    
-    # Detect environment and set appropriate addresses
-    _IS_DOCKER = os.path.exists('/.dockerenv')
-    
-    # Broker configuration (auto-detect environment)
-    if _IS_DOCKER:
-        # Inside Docker: use container names with internal ports
-        BROKERS = {
-            'broker_1': 'kafka-broker-1:29092',
-            'broker_2': 'kafka-broker-2:29093',
-            'broker_3': 'kafka-broker-3:29094',
-            'broker_4': 'kafka-broker-4:29095'
-        }
-        BROKER_BOOTSTRAP_SERVERS = "kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095"
+    """Kafka producer distributing data across 4 brokers."""
+
+    _IS_DOCKER = os.path.exists("/.dockerenv")
+
+    # Allow override via environment (keeps everything aligned with Dockerfile/compose)
+    ENV_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+
+    if ENV_BOOTSTRAP:
+        # Respect explicit env variable completely
+        BROKER_BOOTSTRAP_SERVERS = ENV_BOOTSTRAP
+        logger.info(f"Using KAFKA_BOOTSTRAP_SERVERS from environment: {BROKER_BOOTSTRAP_SERVERS}")
+        BROKERS = {}  # Not used directly, kept for completeness
     else:
-        # Outside Docker: use localhost with external ports
-        BROKERS = {
-            'broker_1': 'localhost:9092',
-            'broker_2': 'localhost:9093',
-            'broker_3': 'localhost:9094',
-            'broker_4': 'localhost:9095'
-        }
-        BROKER_BOOTSTRAP_SERVERS = "localhost:9092,localhost:9093,localhost:9094,localhost:9095"
-    
-    # Device distribution
+        if _IS_DOCKER:
+            # Inside Docker network -> use internal PLAINTEXT listener ports (9092)
+            BROKERS = {
+                "broker_1": "kafka-broker-1:9092",
+                "broker_2": "kafka-broker-2:9092",
+                "broker_3": "kafka-broker-3:9092",
+                "broker_4": "kafka-broker-4:9092",
+            }
+            BROKER_BOOTSTRAP_SERVERS = (
+                "kafka-broker-1:9092,"
+                "kafka-broker-2:9092,"
+                "kafka-broker-3:9092,"
+                "kafka-broker-4:9092"
+            )
+        else:
+            # From host -> use mapped host ports 9092–9095
+            BROKERS = {
+                "broker_1": "localhost:9092",
+                "broker_2": "localhost:9093",
+                "broker_3": "localhost:9094",
+                "broker_4": "localhost:9095",
+            }
+            BROKER_BOOTSTRAP_SERVERS = (
+                "localhost:9092,"
+                "localhost:9093,"
+                "localhost:9094,"
+                "localhost:9095"
+            )
+
     DEVICES_PER_BROKER = 600
     TOTAL_DEVICES = 2400
-    
-    def __init__(self, 
-                 topic: str = 'edge-iiot-stream',
-                 rows_per_second: int = 10,
-                 repeat: bool = True):
-        """
-        Initialize Multi-Broker Kafka producer
-        
-        Args:
-            topic: Target topic name (shared across all brokers)
-            rows_per_second: Streaming rate
-            repeat: Loop and restart from beginning when finished
-        """
+
+    def __init__(
+        self,
+        topic: str = "edge-iiot-stream",
+        rows_per_second: int = 10,
+        repeat: bool = True,
+    ):
         self.topic = topic
         self.rows_per_second = rows_per_second
         self.interval = 1.0 / rows_per_second
         self.repeat = repeat
-        
-        # Single producer connecting to all brokers
-        self.producer = None
+
+        self.producer: Optional[KafkaProducer] = None
         self.messages_sent = 0
         self.errors = 0
-        self.start_time = None
-        
-        # Device distribution mapping
-        self.device_to_broker = {}  # Maps device_id -> broker_index (0-3)
-        
-        logger.info(f"Multi-Broker Producer initialized:")
-        logger.info(f"  Brokers: {self.BROKER_BOOTSTRAP_SERVERS}")
+        self.start_time: Optional[float] = None
+
+        self.device_to_broker: Dict[str, int] = {}
+
+        logger.info("Multi-Broker Producer initialized:")
+        logger.info(f"  Brokers bootstrap: {self.BROKER_BOOTSTRAP_SERVERS}")
         logger.info(f"  Topic: {self.topic}")
-        logger.info(f"  Device distribution: 600 devices per broker")
-        logger.info(f"  Broker 1: devices_0-599")
-        logger.info(f"  Broker 2: devices_600-1199")
-        logger.info(f"  Broker 3: devices_1200-1799")
-        logger.info(f"  Broker 4: devices_1800-2399")
-        
+        logger.info("  Device distribution: 600 devices per broker")
+        logger.info("  Broker 1: device_0–device_599")
+        logger.info("  Broker 2: device_600–device_1199")
+        logger.info("  Broker 3: device_1200–device_1799")
+        logger.info("  Broker 4: device_1800–device_2399")
+
+    # -------------------------------------------------
+    # DEVICE → BROKER MAPPING
+    # -------------------------------------------------
     def get_broker_for_device(self, device_id: str) -> int:
-        """
-        Get broker index (0-3) for a device based on device_id
-        Uses modulo 4 to distribute devices across 4 brokers
-        
-        Args:
-            device_id: Device identifier (e.g., 'device_0')
-            
-        Returns:
-            Broker index (0-3)
-        """
-        # Extract numeric part from device_id (e.g., 'device_0' -> 0)
+        """Map device_id (e.g. device_0) to broker index 0–3."""
         try:
-            device_num = int(device_id.split('_')[-1])
+            device_num = int(device_id.split("_")[-1])
         except (ValueError, IndexError):
-            # Fallback: use hash if format is unexpected
             device_num = hash(device_id) % self.TOTAL_DEVICES
-        
+
         broker_idx = (device_num // self.DEVICES_PER_BROKER) % 4
         return broker_idx
-    
-    def connect(self, max_retries=5, retry_delay=10):
-        """Connect to all brokers in cluster with retry logic"""
+
+    # -------------------------------------------------
+    # KAFKA CONNECTION
+    # -------------------------------------------------
+    def connect(self, max_retries: int = 30, retry_delay: int = 5) -> None:
+        """Connect to Kafka with retry logic (more patient for startup)."""
         retry_count = 0
-        last_error = None
-        
+        last_error: Optional[Exception] = None
+
         while retry_count < max_retries:
             try:
-                logger.info(f"Connecting to multi-broker cluster...")
+                logger.info("Connecting to Kafka cluster...")
                 logger.info(f"Bootstrap servers: {self.BROKER_BOOTSTRAP_SERVERS}")
-                
+
                 self.producer = KafkaProducer(
-                    bootstrap_servers=self.BROKER_BOOTSTRAP_SERVERS.split(','),
-                    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-                    acks='all',
+                    bootstrap_servers=self.BROKER_BOOTSTRAP_SERVERS.split(","),
+                    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+                    acks="all",
                     retries=5,
                     max_in_flight_requests_per_connection=1,
                     request_timeout_ms=60000,
                     connections_max_idle_ms=30000,
                     reconnect_backoff_ms=5000,
-                    partitioner=self._partition_by_broker
                 )
-                logger.info(f"Successfully connected to all 4 Kafka brokers")
+                logger.info("Successfully connected to Kafka")
                 return
-                
             except Exception as e:
                 retry_count += 1
                 last_error = e
-                
                 if retry_count < max_retries:
-                    logger.warning(f"Connection attempt {retry_count} failed: {e}")
-                    logger.warning(f"Retrying in {retry_delay}s... ({max_retries - retry_count} attempts left)")
+                    logger.warning(
+                        "Producer connection attempt %d/%d failed: %s. "
+                        "Retrying in %ds...",
+                        retry_count,
+                        max_retries,
+                        e,
+                        retry_delay,
+                    )
                     time.sleep(retry_delay)
                 else:
-                    logger.error(f"Failed to connect to Kafka brokers after {max_retries} attempts: {last_error}")
-                    logger.error(f"Ensure Docker containers are running:")
-                    logger.error(f"  docker-compose ps")
-                    logger.error(f"  docker-compose logs kafka-broker-1")
+                    logger.error(
+                        "Producer failed to connect after %d attempts: %s",
+                        max_retries,
+                        last_error,
+                    )
                     raise
-    
-    def _partition_by_broker(self, key, all_partitions, available_partitions):
-        """Custom partitioner to route messages to appropriate broker"""
-        if key is None:
-            return random.choice(available_partitions)
-        
-        # Extract broker index from key
-        try:
-            broker_idx = int(key)
-            # Route to partition matching broker
-            for partition in all_partitions:
-                if partition.leader == broker_idx:
-                    return partition
-        except (ValueError, TypeError):
-            pass
-        
-        return random.choice(available_partitions)
-    
+
+
+    # -------------------------------------------------
+    # DATA LOADING & DISTRIBUTION
+    # -------------------------------------------------
     def discover_device_files(self, directory: str) -> List[str]:
-        """
-        Discover all device_*.csv files in directory
-        
-        Args:
-            directory: Path to directory
-            
-        Returns:
-            List of device file paths sorted by device number
-        """
         data_dir = Path(directory)
-        device_files = sorted(data_dir.glob('device_*.csv'), 
-                            key=lambda x: int(x.stem.split('_')[-1]))
-        
+        device_files = sorted(
+            data_dir.glob("device_*.csv"),
+            key=lambda x: int(x.stem.split("_")[-1]),
+        )
+
         if not device_files:
-            logger.warning(f"No device files found in {directory}")
+            logger.warning(f"No device_*.csv files found in {directory}")
             return []
-        
+
         logger.info(f"Discovered {len(device_files)} device files")
         return [str(f) for f in device_files]
-    
-    def load_and_distribute_devices(self, directory: str) -> Dict[int, List[Tuple[str, pd.DataFrame]]]:
-        """
-        Load device files and organize by broker
-        
-        Args:
-            directory: Path to device CSV files
-            
-        Returns:
-            Dictionary mapping broker_idx -> list of (device_id, dataframe) tuples
-        """
+
+    def load_and_distribute_devices(
+        self, directory: str
+    ) -> Dict[int, List[Tuple[str, pd.DataFrame]]]:
         device_files = self.discover_device_files(directory)
-        
         if not device_files:
             logger.error(f"No CSV files found in {directory}")
             return {}
-        
-        # Organize devices by broker
-        broker_devices = {0: [], 1: [], 2: [], 3: []}
-        
+
+        broker_devices: Dict[int, List[Tuple[str, pd.DataFrame]]] = {
+            0: [],
+            1: [],
+            2: [],
+            3: [],
+        }
+
         for device_file in device_files:
             device_path = Path(device_file)
-            device_id = device_path.stem  # e.g., "device_0"
-            
+            device_id = device_path.stem  # "device_123"
             try:
-                df = pd.read_csv(device_file, nrows=100)  # Limit rows for demo
+                df = pd.read_csv(device_file, nrows=100)
                 broker_idx = self.get_broker_for_device(device_id)
                 broker_devices[broker_idx].append((device_id, df))
                 self.device_to_broker[device_id] = broker_idx
-                
-                logger.info(f"Loaded {device_id}: {len(df)} rows → Broker {broker_idx + 1}")
-                
+                logger.info(
+                    f"Loaded {device_id}: {len(df)} rows → Broker {broker_idx + 1}"
+                )
             except Exception as e:
                 logger.error(f"Failed to load {device_path.name}: {e}")
-        
-        logger.info(f"\n{'='*70}")
-        logger.info(f"Device Distribution Summary:")
-        logger.info(f"{'='*70}")
+
+        logger.info("\n" + "=" * 70)
+        logger.info("Device Distribution Summary:")
         for broker_idx in range(4):
-            num_devices = len(broker_devices[broker_idx])
-            device_ids = [dev_id for dev_id, _ in broker_devices[broker_idx]]
-            if device_ids:
-                logger.info(f"Broker {broker_idx + 1} (port {9092 + broker_idx}): {num_devices} devices")
-                logger.info(f"  Device range: {device_ids[0]} - {device_ids[-1]}")
+            devices = broker_devices[broker_idx]
+            num_devices = len(devices)
+            if num_devices:
+                device_ids = [d for d, _ in devices]
+                logger.info(
+                    f"Broker {broker_idx + 1}: {num_devices} devices "
+                    f"({device_ids[0]} … {device_ids[-1]})"
+                )
             else:
-                logger.info(f"Broker {broker_idx + 1}: No devices")
-        logger.info(f"{'='*70}\n")
-        
+                logger.info(f"Broker {broker_idx + 1}: no devices")
+        logger.info("=" * 70 + "\n")
+
         return broker_devices
-    
-    def stream_from_broker_devices(self, broker_devices: Dict[int, List[Tuple[str, pd.DataFrame]]]) -> Generator:
-        """
-        Stream data from devices, randomly rotating through all devices
-        
-        Args:
-            broker_devices: Dictionary of devices organized by broker
-            
-        Yields:
-            Kafka messages with device_id and broker info
-        """
-        # Flatten all devices
-        all_devices = []
+
+    # -------------------------------------------------
+    # STREAM GENERATOR
+    # -------------------------------------------------
+    def stream_from_broker_devices(
+        self, broker_devices: Dict[int, List[Tuple[str, pd.DataFrame]]]
+    ) -> Generator[Tuple[dict, str, int], None, None]:
+        all_records: List[dict] = []
+
         for broker_idx in range(4):
             for device_id, df in broker_devices[broker_idx]:
                 for _, row in df.iterrows():
                     record = row.to_dict()
-                    # Convert to JSON-serializable types
                     for key, value in list(record.items()):
                         if pd.isna(value):
                             record[key] = None
@@ -276,152 +253,153 @@ class MultiBrokerProducer:
                             record[key] = float(value)
                         elif isinstance(value, np.bool_):
                             record[key] = bool(value)
-                    
-                    all_devices.append({
-                        'device_id': device_id,
-                        'broker_idx': broker_idx,
-                        'record': record
-                    })
-        
-        if not all_devices:
+
+                    all_records.append(
+                        {
+                            "device_id": device_id,
+                            "broker_idx": broker_idx,
+                            "record": record,
+                        }
+                    )
+
+        if not all_records:
             logger.error("No device data loaded")
             return
-        
-        logger.info(f"Ready to stream {len(all_devices)} total device records")
-        
-        iteration = 0
+
+        logger.info(f"Ready to stream {len(all_records)} records")
+
         while True:
-            iteration += 1
-            
-            # Randomly select a device record
-            selected = random.choice(all_devices)
-            device_id = selected['device_id']
-            broker_idx = selected['broker_idx']
-            record = selected['record']
-            
-            # Get metric value
-            metric_value = record.get('tcp.ack', record.get('tcp.seq', 0.0))
-            if metric_value is None or metric_value == 0.0:
-                metric_value = 0.0
-            
+            selected = random.choice(all_records)
+            device_id = selected["device_id"]
+            broker_idx = selected["broker_idx"]
+            record = selected["record"]
+
+            metric_value = record.get("tcp.ack", record.get("tcp.seq", 0.0)) or 0.0
+
             message = {
-                'device_id': device_id,
-                'broker': f'broker_{broker_idx + 1}',
-                'timestamp': datetime.now().isoformat(),
-                'data': float(metric_value),
-                'raw_features': record
+                "device_id": device_id,
+                "broker": f"broker_{broker_idx + 1}",
+                "timestamp": datetime.now().isoformat(),
+                "data": float(metric_value),
+                "raw_features": record,
             }
-            
+
             yield message, device_id, broker_idx
-    
-    def send_messages(self, broker_devices: Dict[int, List[Tuple[str, pd.DataFrame]]]):
-        """
-        Main streaming loop - sends messages to Kafka
-        
-        Args:
-            broker_devices: Dictionary of devices organized by broker
-        """
+
+    # -------------------------------------------------
+    # MAIN SEND LOOP
+    # -------------------------------------------------
+    def send_messages(
+        self, broker_devices: Dict[int, List[Tuple[str, pd.DataFrame]]]
+    ) -> None:
         if not self.producer:
             raise RuntimeError("Producer not connected. Call connect() first.")
-        
+
         self.start_time = time.time()
-        message_generator = self.stream_from_broker_devices(broker_devices)
-        
-        logger.info(f"\n{'='*70}")
+        generator = self.stream_from_broker_devices(broker_devices)
+
+        logger.info("\n" + "=" * 70)
         logger.info(f"Starting message stream at {self.rows_per_second} msgs/sec")
-        logger.info(f"Press Ctrl+C to stop")
-        logger.info(f"{'='*70}\n")
-        
+        logger.info("Press Ctrl+C to stop")
+        logger.info("=" * 70 + "\n")
+
         try:
-            last_log_time = time.time()
-            msg_count_since_log = 0
-            
-            for message, device_id, broker_idx in message_generator:
+            for message, device_id, broker_idx in generator:
                 try:
-                    # Send message with device_id as key (for partitioning)
-                    # Note: partition is NOT specified here - kafka-python will use key-based routing
-                    # The broker_idx is embedded in the message for reference but doesn't force partition assignment
                     future = self.producer.send(
                         self.topic,
                         value=message,
-                        key=device_id.encode('utf-8')
+                        key=device_id.encode("utf-8"),
                     )
                     future.get(timeout=10)
-                    
+
                     self.messages_sent += 1
-                    msg_count_since_log += 1
-                    
-                    # Log progress every 100 messages
+
                     if self.messages_sent % 100 == 0:
                         elapsed = time.time() - self.start_time
-                        actual_rate = self.messages_sent / elapsed
-                        logger.info(f"Progress: {self.messages_sent} msgs sent | "
-                                  f"Device: {device_id} → Broker {broker_idx + 1} | "
-                                  f"Actual rate: {actual_rate:.2f} msgs/sec")
-                    
-                    # Throttle to desired rate
+                        rate = self.messages_sent / elapsed if elapsed > 0 else 0.0
+                        logger.info(
+                            f"Sent {self.messages_sent} msgs | "
+                            f"{device_id} → broker {broker_idx + 1} | "
+                            f"rate={rate:.2f} msg/s"
+                        )
+
                     time.sleep(self.interval)
-                    
+
                 except KafkaError as e:
                     logger.error(f"Kafka error: {e}")
                     self.errors += 1
                     if self.errors > 10:
-                        logger.error(f"Too many errors ({self.errors}). Stopping.")
+                        logger.error("Too many errors, stopping producer.")
                         break
-                
+
         except KeyboardInterrupt:
-            logger.info(f"\nShutdown signal received")
+            logger.info("Shutdown requested (Ctrl+C)")
         finally:
             self.shutdown()
-    
-    def shutdown(self):
-        """Gracefully shutdown producer and log statistics"""
+
+    # -------------------------------------------------
+    # CLEANUP
+    # -------------------------------------------------
+    def shutdown(self) -> None:
         if self.producer:
             self.producer.flush()
             self.producer.close()
-        
-        elapsed = time.time() - self.start_time if self.start_time else 0
-        
-        logger.info(f"\n{'='*70}")
-        logger.info(f"PRODUCER SHUTDOWN")
-        logger.info(f"{'='*70}")
+
+        elapsed = time.time() - self.start_time if self.start_time else 0.0
+        logger.info("\n" + "=" * 70)
+        logger.info("PRODUCER SHUTDOWN")
         logger.info(f"Total messages sent: {self.messages_sent}")
         logger.info(f"Total errors: {self.errors}")
-        logger.info(f"Elapsed time: {elapsed:.2f} seconds")
+        logger.info(f"Elapsed time: {elapsed:.2f} s")
         if elapsed > 0:
-            logger.info(f"Average rate: {self.messages_sent / elapsed:.2f} msgs/sec")
-        logger.info(f"{'='*70}\n")
+            logger.info(
+                f"Average rate: {self.messages_sent / elapsed:.2f} msgs/sec"
+            )
+        logger.info("=" * 70 + "\n")
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Multi-Broker Edge-IIoT Kafka Producer')
-    parser.add_argument('--source', type=str, default='data/processed',
-                       help='Path to device CSV files or directory')
-    parser.add_argument('--rate', type=int, default=10,
-                       help='Messages per second')
-    parser.add_argument('--topic', type=str, default='edge-iiot-stream',
-                       help='Kafka topic name')
-    
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Multi-Broker Edge-IIoT Kafka Producer"
+    )
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="data/processed",
+        help="Path to device CSV files or directory",
+    )
+    parser.add_argument(
+        "--rate",
+        type=int,
+        default=10,
+        help="Messages per second",
+    )
+    parser.add_argument(
+        "--topic",
+        type=str,
+        default="edge-iiot-stream",
+        help="Kafka topic name",
+    )
+
     args = parser.parse_args()
-    
+
     producer = MultiBrokerProducer(
         topic=args.topic,
-        rows_per_second=args.rate
+        rows_per_second=args.rate,
     )
-    
+
     try:
         producer.connect()
         broker_devices = producer.load_and_distribute_devices(args.source)
-        
         if broker_devices:
             producer.send_messages(broker_devices)
         else:
-            logger.error("Failed to load device data")
-            
+            logger.error("No device data loaded, exiting.")
     except Exception as e:
         logger.error(f"Fatal error: {e}")
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

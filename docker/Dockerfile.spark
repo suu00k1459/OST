@@ -1,15 +1,35 @@
+# Dockerfile.spark
+# Spark analytics service (reads from Kafka, writes to DB, runs ML)
+
 FROM apache/spark:3.5.0
 
 # Switch to root to install packages
 USER root
 
-# Install Python packages needed for analytics
-RUN pip3 install --no-cache-dir kafka-python psycopg2-binary scikit-learn
+# Optional: working directory just for Python deps
+WORKDIR /opt/spark/app
 
-# Create work directory with proper permissions
-RUN mkdir -p /opt/spark/work && chown -R spark:spark /opt/spark/work && chmod 777 /opt/spark/work
+# Make pip more tolerant of slow / flaky network
+ENV PIP_DEFAULT_TIMEOUT=300
+
+# Use the single global requirements.txt as a constraint file
+COPY requirements.txt .
+
+# Install ONLY the Python libs this Spark service needs,
+# constrained by the global requirements.txt
+RUN pip3 install --no-cache-dir \
+    kafka-python \
+    psycopg2-binary \
+    scikit-learn \
+    -c requirements.txt
+
+# Create work directory with proper permissions for Spark
+RUN mkdir -p /opt/spark/work \
+    && chown -R spark:spark /opt/spark/work \
+    && chmod 777 /opt/spark/work
 
 # Switch back to spark user
 USER spark
 
-# Use the standard entry point
+# Use the image's standard entrypoint (no override)
+# ENTRYPOINT comes from apache/spark:3.5.0

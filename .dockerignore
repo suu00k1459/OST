@@ -1,0 +1,55 @@
+# -------------------------------------------------------
+# 1. System, Git & IDE
+# -------------------------------------------------------
+.git
+.gitignore
+.DS_Store
+Thumbs.db
+desktop.ini
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# -------------------------------------------------------
+# 2. Python, Virtual Envs & Testing
+# -------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+.env
+.pytest_cache/
+.coverage
+htmlcov/
+
+# -------------------------------------------------------
+# 3. Docker & Build Configs
+# -------------------------------------------------------
+# We don't want the infrastructure recipe inside the image
+docker-compose.yml
+docker-compose.override.yml
+
+# -------------------------------------------------------
+# 4. Big Data Frameworks (Spark/Flink/Java)
+# -------------------------------------------------------
+# Local artifacts generated if you run jobs outside Docker
+spark-warehouse/
+metastore_db/
+derby.log
+target/
+build/
+*.jar
+
+# -------------------------------------------------------
+# 5. Logs & Temporary Files
+# -------------------------------------------------------
+logs/
+*.log
+logs amir
+logs oo
+next/
+
+# -----------------------------------------------

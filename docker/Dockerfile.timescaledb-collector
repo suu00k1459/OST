@@ -5,19 +5,37 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install system dependencies (Postgres client libs for psycopg2)
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements - only needed packages
+# Make pip more tolerant of slow / flaky connections
+ENV PIP_DEFAULT_TIMEOUT=300
+
+# Use the single global requirements.txt as a constraint file
+COPY requirements.txt .
+
+# Install ONLY the packages this service needs,
+# constrained by the global requirements.txt
 RUN pip install --no-cache-dir \
     kafka-python \
-    psycopg2-binary
+    psycopg2-binary \
+    -c requirements.txt
 
-# Copy script
+# Copy application files
+COPY scripts/config_loader.py ./scripts/
 COPY scripts/kafka_to_timescaledb_collector.py ./scripts/
 
+# Environment variables (override from compose if needed)
+ENV PYTHONUNBUFFERED=1
+ENV DB_HOST=timescaledb
+ENV DB_PORT=5432
+ENV DB_NAME=flead
+ENV DB_USER=flead
+ENV DB_PASSWORD=password
+ENV KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092,kafka-broker-4:9092
+
 # Run collector
-CMD python scripts/kafka_to_timescaledb_collector.py
+CMD ["python", "scripts/kafka_to_timescaledb_collector.py"]

@@ -1,30 +1,37 @@
-# Monitoring Dashboard Service
+# Dockerfile.monitoring-dashboard
 FROM python:3.11-slim
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=300
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir \
+    flask \
+    flask-cors \
+    flask-socketio \
+    kafka-python \
+    psycopg2-binary \
+    python-dotenv \
+    requests \
+    -c requirements.txt
 
-# Copy application code
+# --- NEW: copy the monitoring dashboard app ---
+COPY monitoring_dashboard/pipeline_monitor.py /app/
+COPY monitoring_dashboard/templates /app/templates
+
+# If other scripts/config are still useful, keep them:
 COPY scripts/ scripts/
 COPY config/ config/
 
-# Create logs directory
 RUN mkdir -p logs
 
-# Expose port
-EXPOSE 5001
+EXPOSE 5000
 
-# Run monitoring dashboard
-CMD ["python", "scripts/monitoring_dashboard.py"]
+CMD ["python", "pipeline_monitor.py"]
