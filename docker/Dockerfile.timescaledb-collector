@@ -1,0 +1,23 @@
+# Dockerfile for Kafka to TimescaleDB Collector
+# Directly writes IoT data from Kafka to the database
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements - only needed packages
+RUN pip install --no-cache-dir \
+    kafka-python \
+    psycopg2-binary
+
+# Copy script
+COPY scripts/kafka_to_timescaledb_collector.py ./scripts/
+
+# Run collector
+CMD python scripts/kafka_to_timescaledb_collector.py
