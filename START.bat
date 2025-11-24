@@ -1,6 +1,29 @@
+: <<'BATCH'
 @echo off
 setlocal enabledelayedexpansion
 title FEDERATED LEARNING PLATFORM - COMPLETE PIPELINE STARTUP
+
+REM ====================================================================
+REM NEW: ensure we run from the directory where this script lives
+REM ====================================================================
+cd /d "%~dp0"
+
+REM ====================================================================
+REM NEW: if cross-platform Python launcher exists, delegate to it
+REM ====================================================================
+if exist "start_flead_pipeline.py" (
+    echo Detected cross-platform Python launcher. Delegating to it...
+    echo.
+    python start_flead_pipeline.py
+
+    echo.
+    echo ====================================================================
+    echo Script finished. Press any key to close this window.
+    echo ====================================================================
+    echo.
+    pause >nul
+    goto :EOF
+)
 
 echo.
 echo ====================================================================
@@ -103,7 +126,7 @@ set "max_wait=120"
 set /a wait_count=!wait_count!+1
 
 REM Check if critical services are healthy / started
-REM Kafka brokers: at least one line with "kafka-broker" and "Up"
+REM Kafka brokers: at least one line with "kafka-broker-1" and "Up"
 docker compose ps | find "kafka-broker-1" | find "Up" >nul 2>&1
 set kafka_ok=!errorlevel!
 
@@ -263,3 +286,109 @@ echo Press any key to close this window.
 echo ====================================================================
 echo.
 pause >nul
+goto :EOF
+BATCH
+
+# -----------------------
+# POSIX / bash section
+# -----------------------
+# Run this on Linux / WSL / macOS with:
+#   bash start.bat
+# or via ./start wrapper (see separate file)
+
+set -e
+
+# Go to this script's directory
+cd "$(dirname "$0")"
+
+echo
+echo "===================================================================="
+echo "FEDERATED LEARNING PLATFORM - COMPLETE PIPELINE STARTUP (POSIX)"
+echo "===================================================================="
+echo
+
+echo "Step 1: Checking Python..."
+if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+  echo "[ERROR] Python not found in PATH."
+  exit 1
+fi
+echo "OK"
+echo
+
+echo "Step 2: Checking Docker..."
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[ERROR] Docker not found in PATH or Docker daemon not running."
+  exit 1
+fi
+echo "OK"
+echo
+
+echo "Step 3: Preparing data..."
+if [ ! -f "data/processed/device_0.csv" ]; then
+  echo "  No device CSV files found, converting from chunks..."
+  if command -v python3 >/dev/null 2>&1; then
+    python3 scripts/convert_chunks_to_device_csvs.py || echo "[WARNING] Data conversion failed, but continuing anyway..."
+  else
+    python scripts/convert_chunks_to_device_csvs.py || echo "[WARNING] Data conversion failed, but continuing anyway..."
+  fi
+else
+  echo "  Device CSV files already exist, skipping conversion..."
+fi
+echo "OK"
+echo
+
+echo
+echo "===================================================================="
+echo "CLEANUP PHASE (POSIX)"
+echo "===================================================================="
+echo
+docker compose down || true
+docker container rm -f zookeeper kafka timescaledb grafana kafka-ui \
+  flink-jobmanager flink-taskmanager spark-master spark-worker-1 \
+  kafka-broker-1 kafka-broker-2 kafka-broker-3 kafka-broker-4 \
+  timescaledb-collector federated-aggregator device-viewer \
+  monitoring-dashboard grafana-init database-init 2>/dev/null || true
+
+echo "Done"
+echo
+
+echo "===================================================================="
+echo "DOCKER SERVICES STARTUP (POSIX)"
+echo "===================================================================="
+echo
+docker compose up -d
+echo
+
+echo "Waiting 30 seconds for services to come up..."
+sleep 30
+docker compose ps
+echo
+
+echo "===================================================================="
+echo "STARTING PIPELINE ORCHESTRATOR (POSIX)"
+echo "===================================================================="
+echo
+
+if command -v python3 >/dev/null 2>&1; then
+  python3 scripts/pipeline_orchestrator.py
+else
+  python scripts/pipeline_orchestrator.py
+fi
+
+echo
+echo "===================================================================="
+echo "PLATFORM STARTUP COMPLETE - ALL SERVICES IN DOCKER (POSIX)"
+echo "===================================================================="
+echo
+echo "ACCESS POINTS:"
+echo "  Live Monitoring:          http://localhost:5001"
+echo "  Grafana Dashboard:        http://localhost:3001  (admin/admin)"
+echo "  Kafka UI:                 http://localhost:8081"
+echo "  Device Viewer Website:    http://localhost:8082"
+echo "  Flink Dashboard:          http://localhost:8161"
+echo "  Spark Master:             http://localhost:8086"
+echo "  TimescaleDB:              localhost:5432"
+echo
+echo "LOGS:"
+echo "  docker compose logs -f"
+echo

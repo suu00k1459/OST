@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Simple wrapper so we can run ./start on Linux/macOS/WSL
+
+# Go to this script's directory
+cd "$(dirname "$0")"
+
+# Use the actual file name as it appears in ls:
+bash START.bat

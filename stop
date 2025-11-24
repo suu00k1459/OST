@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Simple wrapper so we can run ./stop on Linux/macOS/WSL
+
+# Go to this script's directory
+cd "$(dirname "$0")"
+
+# Use the actual file name from the repo (case-sensitive on Unix)
+bash STOP.bat
