@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+# Work in repo root inside the container
+WORKDIR /app
+
+# System deps (unzip handy for Kaggle dataset downloads)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ONLY the libs used by data_preprocessor.py
+RUN pip install --no-cache-dir \
+    "numpy>=1.24.0,<2.0.0" \
+    "pandas>=2.0.0,<2.3.0" \
+    "scikit-learn>=1.3.0" \
+    "scipy" \
+    "kaggle>=1.6.0" \
+    "python-dotenv>=1.0.0" \
+    "numexpr>=2.8.0"
+
+# Copy your Python scripts (including data_preprocessor.py)
+COPY scripts /app/scripts
+
+# Kaggle config directory (matches your Python wrapper)
+ENV KAGGLE_CONFIG_DIR=/root/.kaggle
+
+# Run the preprocessor script
+CMD ["python", "scripts/data_preprocessor.py"]

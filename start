@@ -1,8 +1,119 @@
 #!/usr/bin/env bash
-# Simple wrapper so we can run ./start on Linux/macOS/WSL
+set -e
 
-# Go to this script's directory
+# Go to repo root (directory of this script)
 cd "$(dirname "$0")"
 
-# Use the actual file name as it appears in ls:
-bash START.bat
+echo
+echo "===================================================================="
+echo "FEDERATED LEARNING PLATFORM - COMPLETE PIPELINE STARTUP (POSIX)"
+echo "===================================================================="
+echo
+
+echo "Step 1: Checking Python..."
+if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+  echo "[ERROR] Python not found in PATH."
+  exit 1
+fi
+echo "OK"
+echo
+
+echo "Step 2: Checking Docker..."
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[ERROR] Docker not found in PATH or Docker daemon not running."
+  exit 1
+fi
+echo "OK"
+echo
+
+echo "Starting optional Jupyter UI (dev)..."
+docker compose up -d jupyter-dev || true
+echo "  Jupyter UI (if started) at: http://localhost:8888"
+echo
+
+echo "Step 3: Running data preprocessor (Kaggle) in Docker..."
+
+DEVICE_CSV="data/processed/device_0.csv"
+CHUNKS_DIR="data/processed/chunks"
+
+if [ ! -f "$DEVICE_CSV" ] && { [ ! -d "$CHUNKS_DIR" ] || [ -z "$(ls -A "$CHUNKS_DIR" 2>/dev/null)" ]; }; then
+  echo "  No device CSVs or chunks found, running Docker data-preprocessor..."
+
+  if [ ! -f "kaggle/kaggle.json" ]; then
+    echo "[ERROR] kaggle/kaggle.json not found."
+    echo "Please place your Kaggle API token file in:"
+    echo "  kaggle/kaggle.json"
+    exit 1
+  fi
+
+  if ! docker compose run --rm data-preprocessor; then
+    echo "  [WARNING] data-preprocessor container returned a non-zero exit code."
+
+    if [ -f "$DEVICE_CSV" ] || { [ -d "$CHUNKS_DIR" ] && [ -n "$(ls -A "$CHUNKS_DIR" 2>/dev/null)" ]; }; then
+      echo "  [INFO] Preprocessed data exists on disk (device CSVs or chunks). Treating preprocessing as successful."
+    else
+      echo "  [ERROR] No preprocessed data (device CSVs or chunks) were generated. Cannot continue."
+      exit 1
+    fi
+  fi
+else
+  echo "  Preprocessed data already exists (device CSVs or chunks), skipping Docker preprocessing..."
+fi
+echo "OK"
+echo
+
+echo
+echo "===================================================================="
+echo "CLEANUP PHASE (POSIX)"
+echo "===================================================================="
+echo
+docker compose down || true
+docker container rm -f zookeeper kafka timescaledb grafana kafka-ui \
+  flink-jobmanager flink-taskmanager spark-master spark-worker-1 \
+  kafka-broker-1 kafka-broker-2 kafka-broker-3 kafka-broker-4 \
+  timescaledb-collector federated-aggregator device-viewer \
+  monitoring-dashboard grafana-init database-init 2>/dev/null || true
+
+echo "Done"
+echo
+
+echo "===================================================================="
+echo "DOCKER SERVICES STARTUP (POSIX)"
+echo "===================================================================="
+echo
+docker compose up -d
+echo
+
+echo "Waiting 30 seconds for services to come up..."
+sleep 30
+docker compose ps
+echo
+
+echo "===================================================================="
+echo "STARTING PIPELINE ORCHESTRATOR (POSIX)"
+echo "===================================================================="
+echo
+
+if command -v python3 >/dev/null 2>&1; then
+  python3 scripts/pipeline_orchestrator.py
+else
+  python scripts/pipeline_orchestrator.py
+fi
+
+echo
+echo "===================================================================="
+echo "PLATFORM STARTUP COMPLETE - ALL SERVICES IN DOCKER (POSIX)"
+echo "===================================================================="
+echo
+echo "ACCESS POINTS:"
+echo "  Live Monitoring:          http://localhost:5001"
+echo "  Grafana Dashboard:        http://localhost:3001"
+echo "  Kafka UI:                 http://localhost:8081"
+echo "  Device Viewer Website:    http://localhost:8082"
+echo "  Flink Dashboard:          http://localhost:8161"
+echo "  Spark Master:             http://localhost:8086"
+echo "  TimescaleDB:              localhost:5432"
+echo
+echo "LOGS:"
+echo "  docker compose logs -f"
+echo

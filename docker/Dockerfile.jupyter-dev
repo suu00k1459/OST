@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+
+# Don't write .pyc files, flush stdout/stderr immediately
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Optional but useful OS tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install only what Jupyter dev actually needs (lighter than full requirements.txt)
+RUN pip install --no-cache-dir \
+    "jupyterlab>=4.2,<5.0" \
+    "pandas>=2.0.0,<2.3.0" \
+    "numpy>=1.24.0,<2.0.0" \
+    "matplotlib>=3.7.0,<3.9.0" \
+    "kaggle>=1.6.0"
+
+# Kaggle API will look here for kaggle.json
+ENV KAGGLE_CONFIG_DIR=/root/.kaggle
+
+# Start Jupyter Lab with no token/password, listening on all interfaces
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--NotebookApp.token=", "--NotebookApp.password="]

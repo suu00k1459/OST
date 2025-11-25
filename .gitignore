@@ -4,8 +4,7 @@ kaggle.json
 edge_iiot_data
 edge_iiot_processed
 .ipynb_checkpoints
-
-
+kaggle/kaggle.json
 
 # Ignore large datasets
 data/*.csv

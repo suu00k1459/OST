@@ -1,7 +1,52 @@
 # docker-compose.yml
 # FLEAD: Federated Learning Edge-AI & Data pipeline
 
+
 services:
+  # -------------------------------------------------
+  # 0) DATA PREPROCESSOR (Kaggle + CSV/chunks generator)
+  # -------------------------------------------------
+  data-preprocessor:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.data-preprocessor
+    container_name: data-preprocessor
+    working_dir: /app
+    command: >
+      bash -lc
+      "python scripts/data_preprocessor.py &&
+       python scripts/convert_chunks_to_device_csvs.py"
+    environment:
+      KAGGLE_CONFIG_DIR: /root/.kaggle
+    volumes:
+      - ./data:/app/data
+      - ./kaggle:/root/.kaggle:ro
+    networks:
+      - flead_network
+    restart: "no"
+
+  # -------------------------------------------------
+  # 0b) JUPYTER DEV UI (optional, for inspecting notebooks)
+  # -------------------------------------------------
+  jupyter-dev:
+    build:
+      context: ./docker          # 👈 build from docker/ folder
+      dockerfile: Dockerfile.jupyter-dev
+    container_name: jupyter-dev
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./kaggle:/root/.kaggle:ro
+    environment:
+      KAGGLE_CONFIG_DIR: /root/.kaggle
+    ports:
+      - "8888:8888"
+    networks:
+      - flead_network
+    restart: "no"
+
+
+
   # -------------------------------------------------
   # 1) KAFKA MULTI-BROKER CLUSTER (KRaft mode)
   # -------------------------------------------------
@@ -329,7 +374,7 @@ services:
     networks:
       - flead_network
     ports:
-    - "8087:8081"    # ← add this line
+      - "8087:8081"    # ← add this line
 
   # -------------------------------------------------
   # 5) KAFKA UI
