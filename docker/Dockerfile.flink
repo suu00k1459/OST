@@ -9,8 +9,13 @@ RUN apt-get update && \
     ln -sf /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python packages
-RUN pip3 install --no-cache-dir apache-flink==1.18.1 kafka-python
+# Install Python packages (added numpy, pandas, scikit-learn)
+RUN pip3 install --no-cache-dir \
+    apache-flink==1.18.1 \
+    kafka-python \
+    numpy \
+    pandas \
+    scikit-learn
 
 # Download compatible Kafka connector JARs
 RUN cd /opt/flink/lib && \
