@@ -1,14 +1,16 @@
 {
   "title": "FLEAD - Federated Learning Monitoring",
-  "description": "Monitoring of local and global models, training activity, and global performance.",
-  "tags": ["flead", "federated-learning", "monitoring"],
+  "description": "Monitoring of local and global models, training activity, device activity, and global performance.",
+  "tags": ["flead", "monitoring", "federated-learning"],
   "timezone": "browser",
   "refresh": "30s",
   "time": {
     "from": "now-1h",
     "to": "now"
   },
+
   "panels": [
+
     {
       "id": 1,
       "title": "Total Local Models",
@@ -24,6 +26,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "decimals": 0,
           "color": {
             "mode": "thresholds",
             "thresholds": {
@@ -31,7 +34,7 @@
               "steps": [
                 { "value": 0, "color": "red" },
                 { "value": 100, "color": "yellow" },
-                { "value": 1000, "color": "green" }
+                { "value": 500, "color": "green" }
               ]
             }
           }
@@ -40,12 +43,7 @@
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "textMode": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "values": false,
-          "fields": ""
-        }
+        "textMode": "auto"
       }
     },
 
@@ -64,18 +62,14 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "decimals": 0,
           "color": { "mode": "palette-classic" }
         }
       },
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "textMode": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "values": false,
-          "fields": ""
-        }
+        "textMode": "auto"
       }
     },
 
@@ -94,7 +88,9 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "thresholds",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds",
             "thresholds": {
               "mode": "absolute",
               "steps": [
@@ -109,12 +105,7 @@
       "options": {
         "colorMode": "value",
         "graphMode": "area",
-        "textMode": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "values": false,
-          "fields": ""
-        }
+        "textMode": "auto"
       }
     },
 
@@ -127,36 +118,22 @@
         {
           "refId": "A",
           "database": "flead_db",
-          "query": "SELECT ROUND(accuracy::numeric, 4) AS value FROM federated_models ORDER BY created_at DESC LIMIT 1;"
+          "query": "SELECT ROUND(accuracy * 100, 2) AS value FROM federated_models ORDER BY created_at DESC LIMIT 1;"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
+          "unit": "percent",
+          "decimals": 1,
           "min": 0,
-          "max": 1,
-          "color": {
-            "mode": "thresholds",
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                { "value": 0, "color": "red" },
-                { "value": 0.5, "color": "yellow" },
-                { "value": 0.7, "color": "green" }
-              ]
-            }
-          }
+          "max": 100,
+          "color": { "mode": "continuous-GrYlRd" }
         }
       },
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "textMode": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "values": false,
-          "fields": ""
-        }
+        "textMode": "auto"
       }
     },
 
@@ -169,7 +146,7 @@
         {
           "refId": "A",
           "database": "flead_db",
-          "query": "SELECT time_bucket('1 minute', created_at) AS time, COUNT(*) AS value FROM local_models WHERE $__timeFilter(created_at) GROUP BY time ORDER BY time;"
+          "query": "SELECT time_bucket('1 minute', created_at) AS t, COUNT(*) AS value FROM local_models WHERE $__timeFilter(created_at) GROUP BY t ORDER BY t;"
         }
       ],
       "fieldConfig": {
@@ -178,13 +155,13 @@
           "custom": {
             "drawStyle": "line",
             "lineInterpolation": "smooth",
-            "fillOpacity": 20,
+            "fillOpacity": 30,
             "showPoints": "never"
           }
         }
       },
       "options": {
-        "legend": { "displayMode": "table", "placement": "bottom" },
+        "legend": { "displayMode": "list", "placement": "bottom" },
         "tooltip": { "mode": "multi" }
       }
     },
@@ -198,25 +175,24 @@
         {
           "refId": "A",
           "database": "flead_db",
-          "query": "SELECT created_at AS time, accuracy AS value FROM federated_models WHERE $__timeFilter(created_at) ORDER BY created_at;"
+          "query": "SELECT created_at AS time, accuracy * 100 AS value FROM federated_models WHERE $__timeFilter(created_at) ORDER BY created_at;"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
+          "unit": "percent",
           "min": 0,
-          "max": 1,
+          "max": 100,
           "custom": {
             "drawStyle": "line",
             "lineInterpolation": "smooth",
             "fillOpacity": 30,
-            "showPoints": "always",
-            "pointSize": 5
+            "showPoints": "auto"
           }
         }
       },
       "options": {
-        "legend": { "displayMode": "table", "placement": "bottom" },
+        "legend": { "displayMode": "list", "placement": "bottom" },
         "tooltip": { "mode": "multi" }
       }
     },
@@ -230,12 +206,9 @@
         {
           "refId": "A",
           "database": "flead_db",
-          "query": "SELECT device_id, COUNT(*) AS training_count, ROUND(AVG(accuracy)::numeric, 4) AS avg_accuracy, SUM(samples_processed) AS total_samples FROM local_models WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY device_id ORDER BY training_count DESC LIMIT 20;"
+          "query": "SELECT device_id, COUNT(*) AS count, ROUND(AVG(accuracy)::numeric, 4) AS avg_accuracy, SUM(samples_processed) AS samples FROM local_models WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY device_id ORDER BY count DESC LIMIT 20;"
         }
-      ],
-      "options": {
-        "showHeader": true
-      }
+      ]
     },
 
     {
@@ -247,12 +220,10 @@
         {
           "refId": "A",
           "database": "flead_db",
-          "query": "SELECT global_version, aggregation_round, num_devices, ROUND(accuracy::numeric, 4) AS accuracy, created_at FROM federated_models ORDER BY created_at DESC LIMIT 15;"
+          "query": "SELECT global_version, aggregation_round, num_devices, ROUND(accuracy*100,2) AS accuracy, created_at FROM federated_models ORDER BY created_at DESC LIMIT 15;"
         }
-      ],
-      "options": {
-        "showHeader": true
-      }
+      ]
     }
+
   ]
 }
