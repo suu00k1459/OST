@@ -1,33 +1,24 @@
-# Multi-Broker Kafka Architecture for IoT Simulation
+# Single-Broker Kafka Setup (Updated)
 
 
 ## Architecture
 
-### 4-Broker Kafka Cluster Configuration
+### Single-Broker Kafka Configuration
 
 ```
-Broker 1 (Port 29092)  → Devices 0-599 (600 devices)
-Broker 2 (Port 29093)  → Devices 600-1199 (600 devices)
-Broker 3 (Port 29094)  → Devices 1200-1799 (600 devices)
-Broker 4 (Port 29095)  → Devices 1800-2399 (600 devices)
+Broker 1 (Port 9092)  → All devices (device_0 - device_2399)
 ```
 
 ### External Access (from host machine)
 
 ```
 Broker 1: localhost:9092
-Broker 2: localhost:9093
-Broker 3: localhost:9094
-Broker 4: localhost:9095
 ```
 
 ### Internal Access (from Docker containers)
 
 ```
-Broker 1: kafka-broker-1:29092
-Broker 2: kafka-broker-2:29093
-Broker 3: kafka-broker-3:29094
-Broker 4: kafka-broker-4:29095
+Broker 1: kafka-broker-1:9092
 ```
 
 Bootstrap servers for containers:
@@ -87,7 +78,7 @@ broker_index = (device_number // 600) % 4
 
 ### Producer Behavior
 
-The multi-broker producer (`02_kafka_producer_multi_broker.py`):
+The producer (`02_kafka_producer.py`):
 
 1. **Loads all 2400 device CSV files** from `data/processed/`
 2. **Organizes devices by broker** (600 per broker)
@@ -136,12 +127,12 @@ Each broker has its own volume:
 ### File Location
 
 ```
-scripts/02_kafka_producer_multi_broker.py
+scripts/02_kafka_producer.py
 ```
 
 ### Key Features
 
--   **Multi-Broker Connection:** Connects to all 4 brokers simultaneously
+--   **Connection:** Connects to the single broker `kafka-broker-1:9092`
 -   **Device Distribution:** Loads 2400 devices and maps to brokers
 -   **Random Streaming:** Sends messages from random devices at configurable rate
 -   **Broker Routing:** Automatically routes each message to correct broker partition

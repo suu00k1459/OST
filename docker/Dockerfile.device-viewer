@@ -13,31 +13,18 @@ RUN apt-get update && apt-get install -y \
 # Make pip more tolerant of slow downloads
 ENV PIP_DEFAULT_TIMEOUT=300
 
-# Use the global requirements.txt as constraints
-COPY requirements.txt .
+# Use service-specific requirements
+COPY requirements/device-viewer.txt requirements.txt
 
-# Install ONLY the Python deps needed by device-viewer,
-# but constrain versions via the global requirements.txt
-RUN pip install --no-cache-dir \
-    flask \
-    flask-cors \
-    flask-socketio \
-    python-socketio \
-    python-engineio \
-    simple-websocket \
-    numpy \
-    pandas \
-    psycopg2-binary \
-    sqlalchemy \
-    python-dotenv \
-    requests \
-    -c requirements.txt
+# Install ONLY the Python deps needed by device-viewer
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY scripts/ scripts/
 COPY device-viewer/ device-viewer/
 COPY config/ config/
-COPY data/ data/
+# Data is mounted via volume in docker-compose, not copied
+# COPY data/ data/
 
 # Create logs directory
 RUN mkdir -p logs

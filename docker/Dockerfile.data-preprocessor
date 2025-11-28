@@ -9,14 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install ONLY the libs used by data_preprocessor.py
-RUN pip install --no-cache-dir \
-    "numpy>=1.24.0,<2.0.0" \
-    "pandas>=2.0.0,<2.3.0" \
-    "scikit-learn>=1.3.0" \
-    "scipy" \
-    "kaggle>=1.6.0" \
-    "python-dotenv>=1.0.0" \
-    "numexpr>=2.8.0"
+COPY requirements/data-preprocessor.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy your Python scripts (including data_preprocessor.py)
 COPY scripts /app/scripts

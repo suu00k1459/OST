@@ -49,12 +49,12 @@ def get_kafka_config() -> Dict[str, str]:
     Get Kafka configuration based on environment.
 
     Inside Docker:
-      - use internal service names on PLAINTEXT port 9092 for all 4 brokers:
-            kafka-broker-1:9092, ..., kafka-broker-4:9092
+      - use internal service names on PLAINTEXT port 9092 for broker 1:
+            kafka-broker-1:9092
 
     Outside Docker (host):
-      - use localhost:9092–9095 (mapped in docker-compose):
-            localhost:9092, ..., localhost:9095
+      - use localhost:9092 (mapped in docker-compose):
+            localhost:9092
 
     Environment override:
       KAFKA_BOOTSTRAP_SERVERS="host1:port1,host2:port2,..."
@@ -62,19 +62,9 @@ def get_kafka_config() -> Dict[str, str]:
     is_docker = _in_docker()
 
     if is_docker:
-        default_bootstrap = (
-            "kafka-broker-1:9092,"
-            "kafka-broker-2:9092,"
-            "kafka-broker-3:9092,"
-            "kafka-broker-4:9092"
-        )
+        default_bootstrap = "kafka-broker-1:9092"
     else:
-        default_bootstrap = (
-            "localhost:9092,"
-            "localhost:9093,"
-            "localhost:9094,"
-            "localhost:9095"
-        )
+        default_bootstrap = "localhost:9092"
 
     return {
         "bootstrap_servers": os.getenv("KAFKA_BOOTSTRAP_SERVERS", default_bootstrap)

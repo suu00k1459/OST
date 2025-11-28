@@ -16,26 +16,16 @@ RUN apt-get update && apt-get install -y \
 # Make pip a bit more tolerant of slow networks (optional but helpful)
 ENV PIP_DEFAULT_TIMEOUT=300
 
-# Copy the SINGLE global requirements file (used as a constraints file)
-COPY requirements.txt .
+# Copy service-specific requirements
+COPY requirements/aggregator.txt requirements.txt
 
-# Install ONLY the libs the federated aggregator actually needs,
-# but respect versions from requirements.txt via "-c requirements.txt"
-RUN pip install --no-cache-dir \
-    numpy \
-    pandas \
-    scikit-learn \
-    psycopg2-binary \
-    sqlalchemy \
-    kafka-python \
-    python-dotenv \
-    requests \
-    numexpr \
-    -c requirements.txt
+# Install ONLY the libs the federated aggregator actually needs
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY scripts/config_loader.py ./scripts/
 COPY scripts/04_federated_aggregation.py ./scripts/
+COPY scripts/dashboard_metrics_updater.py ./scripts/
 
 # Create models directory
 RUN mkdir -p /app/models/{local,global}

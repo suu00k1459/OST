@@ -67,9 +67,6 @@ def check_docker() -> bool:
     # Core infra from your docker-compose.yml
     services = [
         'kafka-broker-1',
-        'kafka-broker-2',
-        'kafka-broker-3',
-        'kafka-broker-4',
         'timescaledb',
         'flink-jobmanager',
         'flink-taskmanager',
@@ -91,7 +88,7 @@ def check_docker() -> bool:
 
 
 def check_kafka() -> bool:
-    """Check Kafka topics have messages (multi-broker cluster)."""
+    """Check Kafka topics have messages (single-broker cluster)."""
     print_header("KAFKA DATA FLOW")
 
     topics = [
@@ -111,10 +108,7 @@ def check_kafka() -> bool:
                     'docker', 'exec', 'kafka-broker-1',
                     'kafka-run-class', 'kafka.tools.GetOffsetShell',
                     '--broker-list',
-                    'kafka-broker-1:9092,'
-                    'kafka-broker-2:9092,'
-                    'kafka-broker-3:9092,'
-                    'kafka-broker-4:9092',
+                    'kafka-broker-1:9092',
                     '--topic', topic,
                     '--time', '-1',
                 ],

@@ -55,10 +55,10 @@ docker-compose.yml                # Service orchestration and networking
 **Runtime:**
 
 -   Mounts: `./data/processed:/app/data/processed` (2,400+ CSV files)
--   Environment: `KAFKA_BOOTSTRAP_SERVERS=kafka:29092`, `DATA_PATH=/app/data/processed`
+-   Environment: `KAFKA_BOOTSTRAP_SERVERS=kafka:9092`, `DATA_PATH=/app/data/processed`
 -   Depends on: Kafka healthy, database-init completed
 -   Streams to: `edge-iiot-stream` Kafka topic
--   Health Check: Validates connection to `kafka:29092`
+-   Health Check: Validates connection to `kafka:9092`
 
 **Data Flow:**
 
@@ -211,8 +211,8 @@ Grafana ← Dashboard & Data Source Configuration ← grafana-init Service
 
 -   KRaft mode (no Zookeeper required)
 -   Single broker configuration
--   Dual listeners: Internal (29092) and External (9092)
--   Ports: 9092 (external), 29092 (internal)
+-   Listener: PLAINTEXT on 9092 (internal and external)
+        -   Port: 9092
 -   Persistent volume: `kafka_data`
 
 ### TimescaleDB (timescale/timescaledb-ha:pg16)
@@ -248,7 +248,7 @@ All containers connected via Docker bridge network with built-in DNS resolution.
 
 **Internal Service Discovery:**
 
--   `kafka:29092` - Kafka bootstrap server (internal)
+        -   `kafka:9092` - Kafka bootstrap server (internal)
 -   `timescaledb:5432` - Database connection
 -   `flink-jobmanager:6123` - Flink RPC
 -   `spark-master:7077` - Spark cluster

@@ -28,14 +28,11 @@ logger = logging.getLogger(__name__)
 # Configuration (inside Docker: hosts are service names)
 # ---------------------------------------------------------------------
 
-# Multi-broker cluster – PLAINTEXT ports (must match docker-compose)
+# Kafka cluster – PLAINTEXT ports (must match docker-compose; single-broker mode)
 KAFKA_BROKERS = [
     "kafka-broker-1:9092",
-    "kafka-broker-2:9092",
-    "kafka-broker-3:9092",
-    "kafka-broker-4:9092",
 ]
-KAFKA_TOPIC = "edge-iiot-stream"
+KAFKA_TOPICS = ["edge-iiot-stream", "anomalies", "local-model-updates"]
 GROUP_ID = "timescaledb-collector"
 
 # Database (matches docker-compose + 00_init_database.py)
@@ -56,7 +53,12 @@ class KafkaToTimescaleDB:
     def __init__(self):
         self.kafka_consumer = None
         self.db_conn = None
-        self.batch = []
+        
+        # Separate batches for each table
+        self.iot_batch = []
+        self.anomaly_batch = []
+        self.model_batch = []
+        
         self.last_insert_time = time.time()
         self.total_messages = 0
         self.total_inserts = 0
@@ -74,7 +76,7 @@ class KafkaToTimescaleDB:
         for attempt in range(1, max_retries + 1):
             try:
                 self.kafka_consumer = KafkaConsumer(
-                    KAFKA_TOPIC,
+                    *KAFKA_TOPICS,  # Subscribe to all topics
                     bootstrap_servers=KAFKA_BROKERS,
                     group_id=GROUP_ID,
                     auto_offset_reset="earliest",
@@ -160,12 +162,12 @@ class KafkaToTimescaleDB:
     # --------------------------------------------------------------
     def create_tables(self) -> bool:
         """
-        Ensure iot_data and dashboard_metrics tables exist (idempotent).
+        Ensure iot_data, anomalies, local_model_updates, and dashboard_metrics tables exist.
         """
         try:
             cur = self.db_conn.cursor()
 
-            # iot_data for raw sensor events
+            # 1. iot_data for raw sensor events
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS iot_data (
@@ -174,15 +176,44 @@ class KafkaToTimescaleDB:
                     value     DOUBLE PRECISION,
                     label     INT
                 );
-
                 SELECT create_hypertable('iot_data', 'ts', if_not_exists => TRUE);
-
-                CREATE INDEX IF NOT EXISTS idx_iot_data_device_ts
-                    ON iot_data (device_id, ts);
+                CREATE INDEX IF NOT EXISTS idx_iot_data_device_ts ON iot_data (device_id, ts);
                 """
             )
 
-            # NEW: dashboard_metrics snapshot table
+            # 2. anomalies table
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS anomalies (
+                    ts        TIMESTAMPTZ NOT NULL,
+                    device_id TEXT        NOT NULL,
+                    value     DOUBLE PRECISION,
+                    z_score   DOUBLE PRECISION,
+                    severity  TEXT
+                );
+                SELECT create_hypertable('anomalies', 'ts', if_not_exists => TRUE);
+                CREATE INDEX IF NOT EXISTS idx_anomalies_device_ts ON anomalies (device_id, ts);
+                """
+            )
+
+            # 3. local_model_updates table
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS local_model_updates (
+                    ts            TIMESTAMPTZ NOT NULL,
+                    device_id     TEXT        NOT NULL,
+                    model_version INT,
+                    accuracy      DOUBLE PRECISION,
+                    loss          DOUBLE PRECISION,
+                    mean          DOUBLE PRECISION,
+                    std           DOUBLE PRECISION
+                );
+                SELECT create_hypertable('local_model_updates', 'ts', if_not_exists => TRUE);
+                CREATE INDEX IF NOT EXISTS idx_models_device_ts ON local_model_updates (device_id, ts);
+                """
+            )
+
+            # 4. dashboard_metrics snapshot table
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS dashboard_metrics (
@@ -192,17 +223,12 @@ class KafkaToTimescaleDB:
                     messages_last_minute BIGINT,
                     messages_last_5min   BIGINT
                 );
-
-                SELECT create_hypertable(
-                    'dashboard_metrics',
-                    'updated_at',
-                    if_not_exists => TRUE
-                );
+                SELECT create_hypertable('dashboard_metrics', 'updated_at', if_not_exists => TRUE);
                 """
             )
 
             self.db_conn.commit()
-            logger.info("✓ iot_data & dashboard_metrics tables ready")
+            logger.info("✓ All tables (iot_data, anomalies, models, metrics) ready")
             cur.close()
             return True
         except Exception as e:
@@ -273,55 +299,93 @@ class KafkaToTimescaleDB:
     # --------------------------------------------------------------
     # Insertion
     # --------------------------------------------------------------
-    def insert_batch(self) -> None:
-        """Insert current batch into iot_data and update dashboard_metrics."""
-        if not self.batch:
+    def insert_batches(self) -> None:
+        """Insert all pending batches into their respective tables."""
+        if not (self.iot_batch or self.anomaly_batch or self.model_batch):
             return
 
         try:
             cur = self.db_conn.cursor()
 
-            data_tuples = []
-            for msg in self.batch:
-                ts_raw = msg.get("timestamp")
-                if isinstance(ts_raw, str):
-                    try:
-                        ts = datetime.fromisoformat(ts_raw)
-                    except Exception:
-                        ts = datetime.utcnow()
-                else:
-                    ts = datetime.utcnow()
+            # 1. Insert IoT Data
+            if self.iot_batch:
+                data_tuples = []
+                for msg in self.iot_batch:
+                    ts = self._parse_ts(msg.get("timestamp"))
+                    device_id = msg.get("device_id", "device_0")
+                    value = float(msg.get("value", 0.0))
+                    label = int(msg.get("label", 0))
+                    data_tuples.append((ts, device_id, value, label))
 
-                device_id = msg.get("device_id", "device_0")
-                value = float(msg.get("value", 0.0))
-                label = int(msg.get("label", 0))
+                execute_values(
+                    cur,
+                    "INSERT INTO iot_data (ts, device_id, value, label) VALUES %s",
+                    data_tuples,
+                )
+                self.total_inserts += len(self.iot_batch)
+                self.iot_batch = []
 
-                data_tuples.append((ts, device_id, value, label))
+            # 2. Insert Anomalies
+            if self.anomaly_batch:
+                anom_tuples = []
+                for msg in self.anomaly_batch:
+                    ts = self._parse_ts(msg.get("timestamp"))
+                    device_id = msg.get("device_id", "unknown")
+                    value = float(msg.get("value", 0.0))
+                    z_score = float(msg.get("z_score", 0.0))
+                    severity = msg.get("severity", "info")
+                    anom_tuples.append((ts, device_id, value, z_score, severity))
 
-            execute_values(
-                cur,
-                "INSERT INTO iot_data (ts, device_id, value, label) VALUES %s",
-                data_tuples,
-            )
+                execute_values(
+                    cur,
+                    "INSERT INTO anomalies (ts, device_id, value, z_score, severity) VALUES %s",
+                    anom_tuples,
+                )
+                self.anomaly_batch = []
 
-            # NEW: after inserting sensor data, record a snapshot row
+            # 3. Insert Model Updates
+            if self.model_batch:
+                model_tuples = []
+                for msg in self.model_batch:
+                    ts = self._parse_ts(msg.get("timestamp"))
+                    device_id = msg.get("device_id", "unknown")
+                    version = int(msg.get("model_version", 0))
+                    acc = float(msg.get("accuracy", 0.0))
+                    loss = float(msg.get("loss", 0.0))
+                    mean = float(msg.get("mean", 0.0))
+                    std = float(msg.get("std", 0.0))
+                    model_tuples.append((ts, device_id, version, acc, loss, mean, std))
+
+                execute_values(
+                    cur,
+                    "INSERT INTO local_model_updates (ts, device_id, model_version, accuracy, loss, mean, std) VALUES %s",
+                    model_tuples,
+                )
+                self.model_batch = []
+
+            # Snapshot metrics after insertion
             self.write_dashboard_snapshot()
 
             self.db_conn.commit()
-            self.total_inserts += len(self.batch)
             logger.info(
-                "✓ Inserted %d rows (total inserts: %d)",
-                len(self.batch),
+                "✓ Flushed batches. Total inserts: %d",
                 self.total_inserts,
             )
 
-            self.batch = []
             self.last_insert_time = time.time()
             cur.close()
 
         except Exception as e:
-            logger.error("✗ Failed to insert batch: %s", e)
+            logger.error("✗ Failed to insert batches: %s", e)
             self.db_conn.rollback()
+
+    def _parse_ts(self, ts_raw) -> datetime:
+        if isinstance(ts_raw, str):
+            try:
+                return datetime.fromisoformat(ts_raw)
+            except Exception:
+                pass
+        return datetime.utcnow()
 
     # --------------------------------------------------------------
     # Main loop
@@ -336,8 +400,8 @@ class KafkaToTimescaleDB:
             sys.exit(1)
 
         logger.info(
-            "Starting collection from topic '%s' (batch=%d, interval=%ds)",
-            KAFKA_TOPIC,
+            "Starting collection from topics %s (batch=%d, interval=%ds)",
+            KAFKA_TOPICS,
             BATCH_SIZE,
             INSERT_INTERVAL_SECONDS,
         )
@@ -346,19 +410,31 @@ class KafkaToTimescaleDB:
             for message in self.kafka_consumer:
                 try:
                     data = message.value
+                    topic = message.topic
 
-                    if "device_id" not in data:
-                        data["device_id"] = f"device_{self.total_messages % 2400}"
+                    # Route to appropriate batch
+                    if topic == "edge-iiot-stream":
+                        if "device_id" not in data:
+                            data["device_id"] = f"device_{self.total_messages % 2400}"
+                        self.iot_batch.append(data)
+                    
+                    elif topic == "anomalies":
+                        self.anomaly_batch.append(data)
+                    
+                    elif topic == "local-model-updates":
+                        self.model_batch.append(data)
 
-                    self.batch.append(data)
                     self.total_messages += 1
 
+                    # Check flush conditions
+                    total_pending = len(self.iot_batch) + len(self.anomaly_batch) + len(self.model_batch)
                     time_since_last = time.time() - self.last_insert_time
+                    
                     if (
-                        len(self.batch) >= BATCH_SIZE
+                        total_pending >= BATCH_SIZE
                         or time_since_last >= INSERT_INTERVAL_SECONDS
                     ):
-                        self.insert_batch()
+                        self.insert_batches()
 
                     if self.total_messages % 100 == 0:
                         logger.info(
@@ -374,8 +450,7 @@ class KafkaToTimescaleDB:
         except Exception as e:
             logger.error("Collector error: %s", e)
         finally:
-            if self.batch:
-                self.insert_batch()
+            self.insert_batches()
 
             logger.info(
                 "Final stats: %d messages seen, %d rows inserted",

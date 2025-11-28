@@ -44,7 +44,7 @@ scripts/00_init_database.py
 scripts/00_install_dependencies.py
 scripts/00_model_manager.py
 scripts/01_setup_kafka_topics.py
-scripts/02_kafka_producer_multi_broker.py
+scripts/02_kafka_producer.py
 scripts/03_flink_local_training.py
 scripts/04_federated_aggregation.py
 scripts/05_spark_analytics.py

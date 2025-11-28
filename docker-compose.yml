@@ -1,6 +1,6 @@
 # docker-compose.yml
-# FLEAD: Federated Learning Edge-AI & Data pipeline
-
+# FLEAD: Federated Learning Edge-IoT & Data pipeline
+# SINGLE BROKER MODE
 
 services:
   # -------------------------------------------------
@@ -30,8 +30,8 @@ services:
   # -------------------------------------------------
   jupyter-dev:
     build:
-      context: ./docker          # 👈 build from docker/ folder
-      dockerfile: Dockerfile.jupyter-dev
+      context: .
+      dockerfile: docker/Dockerfile.jupyter-dev
     container_name: jupyter-dev
     working_dir: /app
     volumes:
@@ -45,26 +45,25 @@ services:
       - flead_network
     restart: "no"
 
-
-
   # -------------------------------------------------
-  # 1) KAFKA MULTI-BROKER CLUSTER (KRaft mode)
+  # 1) KAFKA SINGLE BROKER (KRaft mode)
   # -------------------------------------------------
   kafka-broker-1:
     image: confluentinc/cp-kafka:7.6.1
     container_name: kafka-broker-1
     ports:
-      - "9092:9092"    # external client port (broker 1)
-      - "29092:29092"  # optional extra port (not used by listeners, ok to keep)
+      - "9092:9092"    # external client port
+      - "29092:29092"  # optional extra port
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_HEAP_OPTS: "-Xmx600M -Xms600M"
 
       # REQUIRED by Confluent KRaft entrypoint
       CLUSTER_ID: "DrFOBqf2SYmi0Qu1eq13kw"
 
-      # KRaft quorum (all 4 controllers)
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-broker-1:29093,2@kafka-broker-2:29093,3@kafka-broker-3:29093,4@kafka-broker-4:29093"
+      # KRaft quorum (single node)
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-broker-1:29093"
 
       # Listeners: data + controller
       KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:29093"
@@ -74,9 +73,9 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
 
       # Internal topics & group coordination
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
@@ -89,104 +88,10 @@ services:
       - flead_network
     healthcheck:
       test: ["CMD", "bash", "-c", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
-      interval: 15s
+      interval: 30s
       timeout: 10s
       retries: 10
-      start_period: 40s
-
-  kafka-broker-2:
-    image: confluentinc/cp-kafka:7.6.1
-    container_name: kafka-broker-2
-    ports:
-      - "9093:9092"    # external client port (broker 2)
-      - "29093:29093"  # exposes controller port if you ever need it
-    environment:
-      KAFKA_NODE_ID: 2
-      KAFKA_PROCESS_ROLES: "broker,controller"
-      CLUSTER_ID: "DrFOBqf2SYmi0Qu1eq13kw"
-
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-broker-1:29093,2@kafka-broker-2:29093,3@kafka-broker-3:29093,4@kafka-broker-4:29093"
-
-      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:29093"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-broker-2:9092"
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
-      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
-      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
-
-    volumes:
-      - kafka_broker_2_data:/var/lib/kafka/data
-    networks:
-      - flead_network
-
-  kafka-broker-3:
-    image: confluentinc/cp-kafka:7.6.1
-    container_name: kafka-broker-3
-    ports:
-      - "9094:9092"    # external client port (broker 3)
-      - "29094:29093"  # map host 29094 -> container 29093 (controller)
-    environment:
-      KAFKA_NODE_ID: 3
-      KAFKA_PROCESS_ROLES: "broker,controller"
-      CLUSTER_ID: "DrFOBqf2SYmi0Qu1eq13kw"
-
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-broker-1:29093,2@kafka-broker-2:29093,3@kafka-broker-3:29093,4@kafka-broker-4:29093"
-
-      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:29093"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-broker-3:9092"
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
-      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
-      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
-
-    volumes:
-      - kafka_broker_3_data:/var/lib/kafka/data
-    networks:
-      - flead_network
-
-  kafka-broker-4:
-    image: confluentinc/cp-kafka:7.6.1
-    container_name: kafka-broker-4
-    ports:
-      - "9095:9092"    # external client port (broker 4)
-      - "29095:29093"  # map host 29095 -> container 29093 (controller)
-    environment:
-      KAFKA_NODE_ID: 4
-      KAFKA_PROCESS_ROLES: "broker,controller"
-      CLUSTER_ID: "DrFOBqf2SYmi0Qu1eq13kw"
-
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-broker-1:29093,2@kafka-broker-2:29093,3@kafka-broker-3:29093,4@kafka-broker-4:29093"
-
-      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:29093"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-broker-4:9092"
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
-      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
-      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
-
-    volumes:
-      - kafka_broker_4_data:/var/lib/kafka/data
-    networks:
-      - flead_network
-
+      start_period: 180s
 
   # -------------------------------------------------
   # 2) TIMESCALEDB + INIT
@@ -212,7 +117,6 @@ services:
       retries: 15
       start_period: 60s
 
-
   database-init:
     build:
       context: .
@@ -234,7 +138,6 @@ services:
   timescaledb-collector:
     build:
       context: .
-    #   dockerfile: docker/Dockerfile.timescaledb-collector  # (keep if custom)
       dockerfile: docker/Dockerfile.timescaledb-collector
     container_name: timescaledb-collector
     environment:
@@ -243,27 +146,22 @@ services:
       DB_NAME: flead
       DB_USER: flead
       DB_PASSWORD: password
-      # IMPORTANT: bootstrap on PLAINTEXT ports, not controller ports
-      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092,kafka-broker-4:9092"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092"
+    volumes:
+      - ./scripts:/app/scripts:ro
     depends_on:
       timescaledb:
         condition: service_healthy
       kafka-broker-1:
-        condition: service_started
-      kafka-broker-2:
-        condition: service_started
-      kafka-broker-3:
-        condition: service_started
-      kafka-broker-4:
         condition: service_started
     networks:
       - flead_network
     restart: unless-stopped
     
 
-# -------------------------------------------------
-# 3) FLINK CLUSTER
-# -------------------------------------------------
+  # -------------------------------------------------
+  # 3) FLINK CLUSTER
+  # -------------------------------------------------
   flink-jobmanager:
     build:
       context: .
@@ -276,29 +174,20 @@ services:
       TASK_MANAGER_RPC_PORT: 6122
       TASK_MANAGER_MEMORY_PROCESS_SIZE: 1024m
       JOB_MANAGER_MEMORY_PROCESS_SIZE: 1024m
-      # Used by 03_flink_local_training.py
-      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092,kafka-broker-4:9092"
-      # Where to store local models inside the container
+      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092"
       LOCAL_MODEL_DIR: "/opt/flink/models/local"
     ports:
       - "6123:6123"
       - "8161:8081"       # Flink dashboard
     volumes:
       - flink_jobmanager_data:/flink/data
-      - ./scripts:/opt/flink/scripts      # Python Flink jobs
-      - ./data:/opt/flink/data            # Optional input data
-      # 🔹 Only mount custom jars into usrlib, do NOT touch /opt/flink/lib
+      - ./scripts:/opt/flink/scripts
+      - ./data:/opt/flink/data:ro
       - ./flink-jars:/opt/flink/usrlib
     networks:
       - flead_network
     depends_on:
       kafka-broker-1:
-        condition: service_started
-      kafka-broker-2:
-        condition: service_started
-      kafka-broker-3:
-        condition: service_started
-      kafka-broker-4:
         condition: service_started
 
   flink-taskmanager:
@@ -309,10 +198,9 @@ services:
     command: taskmanager
     environment:
       JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
-      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092,kafka-broker-4:9092"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092"
       LOCAL_MODEL_DIR: "/opt/flink/models/local"
     volumes:
-      # Same user jars as jobmanager
       - ./flink-jars:/opt/flink/usrlib
     depends_on:
       flink-jobmanager:
@@ -341,19 +229,12 @@ services:
     volumes:
       - spark_master_data:/opt/spark/work
       - ./scripts:/opt/spark/scripts
-      - ./data:/opt/spark/data
-      # Shared global model directory (for Spark Analytics to read)
+      - ./data:/opt/spark/data:ro
       - models_global:/app/models/global
     networks:
       - flead_network
     depends_on:
       kafka-broker-1:
-        condition: service_started
-      kafka-broker-2:
-        condition: service_started
-      kafka-broker-3:
-        condition: service_started
-      kafka-broker-4:
         condition: service_started
       timescaledb:
         condition: service_healthy
@@ -374,7 +255,7 @@ services:
     networks:
       - flead_network
     ports:
-      - "8087:8081"    # ← add this line
+      - "8087:8081"
 
   # -------------------------------------------------
   # 5) KAFKA UI
@@ -386,21 +267,15 @@ services:
       - "8081:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: flead
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092,kafka-broker-4:9092"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka-broker-1:9092"
     depends_on:
       kafka-broker-1:
-        condition: service_started
-      kafka-broker-2:
-        condition: service_started
-      kafka-broker-3:
-        condition: service_started
-      kafka-broker-4:
         condition: service_started
     networks:
       - flead_network
 
   # -------------------------------------------------
-  # 6) MULTI-BROKER PRODUCER
+  # 6) KAFKA PRODUCER
   # -------------------------------------------------
   kafka-producer:
     build:
@@ -408,21 +283,18 @@ services:
       dockerfile: docker/Dockerfile.producer
     container_name: kafka-producer
     command: [
-      "python", "scripts/02_kafka_producer_multi_broker.py",
+      "python", "scripts/02_kafka_producer.py",
       "--source", "data/processed",
       "--rate", "10",
       "--topic", "edge-iiot-stream"
     ]
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092,kafka-broker-4:9092"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092"
+    volumes:
+      - ./data/processed:/app/data/processed:ro
+      - ./scripts:/app/scripts:ro
     depends_on:
       kafka-broker-1:
-        condition: service_started
-      kafka-broker-2:
-        condition: service_started
-      kafka-broker-3:
-        condition: service_started
-      kafka-broker-4:
         condition: service_started
     networks:
       - flead_network
@@ -438,23 +310,16 @@ services:
       dockerfile: docker/Dockerfile.aggregator
     container_name: federated-aggregator
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092,kafka-broker-4:9092"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092"
       TIMESCALEDB_HOST: timescaledb
       TIMESCALEDB_PORT: 5432
       TIMESCALEDB_DB: flead
       TIMESCALEDB_USER: flead
       TIMESCALEDB_PASSWORD: password
     volumes:
-      # Shared global model directory for saving global_model_v*.pkl
       - models_global:/app/models/global
     depends_on:
       kafka-broker-1:
-        condition: service_started
-      kafka-broker-2:
-        condition: service_started
-      kafka-broker-3:
-        condition: service_started
-      kafka-broker-4:
         condition: service_started
       timescaledb:
         condition: service_healthy
@@ -468,8 +333,6 @@ services:
   spark-analytics:
     build:
       context: .
-      # Reuse a Python image that already has psycopg2 etc.
-      # The aggregator image is fine for this:
       dockerfile: docker/Dockerfile.aggregator
     container_name: spark-analytics
     command: ["python", "scripts/dashboard_metrics_updater.py"]
@@ -502,6 +365,8 @@ services:
       DB_USER: flead
       DB_PASSWORD: password
       PORT: 5000
+    volumes:
+      - ./data:/app/data:ro
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -525,17 +390,11 @@ services:
       DB_NAME: flead
       DB_USER: flead
       DB_PASSWORD: password
-      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092,kafka-broker-4:9092"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092"
     depends_on:
       timescaledb:
         condition: service_healthy
       kafka-broker-1:
-        condition: service_started
-      kafka-broker-2:
-        condition: service_started
-      kafka-broker-3:
-        condition: service_started
-      kafka-broker-4:
         condition: service_started
     networks:
       - flead_network
@@ -594,16 +453,10 @@ networks:
 
 volumes:
   kafka_broker_1_data:
-  kafka_broker_2_data:
-  kafka_broker_3_data:
-  kafka_broker_4_data:
   timescaledb_data:
   flink_jobmanager_data:
   flink_taskmanager_data:
   spark_master_data:
   spark_worker_data:
   grafana_data:
-  # Shared volume for global model snapshots, used by:
-  #   - federated-aggregator (writer)
-  #   - spark-master (reader in 05_spark_analytics.py)
   models_global:

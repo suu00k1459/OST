@@ -10,17 +10,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements/monitoring-dashboard.txt requirements.txt
 
-RUN pip install --no-cache-dir \
-    flask \
-    flask-cors \
-    flask-socketio \
-    kafka-python \
-    psycopg2-binary \
-    python-dotenv \
-    requests \
-    -c requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # --- NEW: copy the monitoring dashboard app ---
 COPY monitoring_dashboard/pipeline_monitor.py /app/

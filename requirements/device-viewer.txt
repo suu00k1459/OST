@@ -1,0 +1,12 @@
+flask
+flask-cors
+flask-socketio
+python-socketio
+python-engineio
+simple-websocket
+numpy
+pandas
+psycopg2-binary
+sqlalchemy
+python-dotenv
+requests

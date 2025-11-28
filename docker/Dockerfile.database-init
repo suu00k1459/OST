@@ -13,19 +13,11 @@ RUN apt-get update && apt-get install -y \
 # Make pip more tolerant of slow network during build
 ENV PIP_DEFAULT_TIMEOUT=300
 
-# Use the global requirements.txt as a constraints file
-COPY requirements.txt .
+# Use service-specific requirements
+COPY requirements/database-init.txt requirements.txt
 
-# Install ONLY the Python libs needed for DB init,
-# but constrain their versions using requirements.txt
-RUN pip install --no-cache-dir \
-    numpy \
-    pandas \
-    psycopg2-binary \
-    sqlalchemy \
-    python-dotenv \
-    numexpr \
-    -c requirements.txt
+# Install ONLY the Python libs needed for DB init
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files and SQL scripts
 COPY scripts/config_loader.py ./scripts/

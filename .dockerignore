@@ -53,3 +53,7 @@ logs oo
 next/
 
 # -----------------------------------------------
+# Exclude large data folders
+data/
+kaggle/
+models/

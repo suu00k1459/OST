@@ -21,14 +21,11 @@ RUN apt-get update && \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy global requirements to use as constraints (NOT full install)
-COPY requirements.txt /opt/flink/requirements.txt
+# Copy service-specific requirements
+COPY requirements/flink.txt /opt/flink/requirements.txt
 
-# Install ONLY what Flink Python job needs (constrained by your requirements.txt)
-RUN pip3 install --no-cache-dir \
-        apache-flink==1.18.1 \
-        kafka-python \
-        -c /opt/flink/requirements.txt
+# Install ONLY what Flink Python job needs
+RUN pip3 install --no-cache-dir -r /opt/flink/requirements.txt
 
 # Make sure these dirs always exist in the image
 RUN mkdir -p /opt/flink/scripts \

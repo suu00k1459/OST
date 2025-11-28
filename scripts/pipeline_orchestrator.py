@@ -3,7 +3,12 @@
 FLEAD Pipeline Orchestrator (Docker-first)
 
 - Assumes `docker compose up -d` has already brought up the stack.
-- Waits for core Docker services to be ready (Kafka, TimescaleDB, Flink, Spark).
+- Waits for core Docker services to be ready (Kafka, TimescaleDB, Flink, Spark) by default.
+    You can pass optional flags to shorten or skip waiting:
+        --fast     Use shorter wait timeouts for faster startup
+        --no-wait   Skip Docker health waits entirely (start immediately)
+        --timeout N Override default wait timeout in seconds
+        --interval N Override default polling interval in seconds
 - Runs:
     1) Kafka topic setup (01_setup_kafka_topics.py) on the host
     2) Submits the Flink local training job to flink-jobmanager via `docker exec`
@@ -19,6 +24,7 @@ import sys
 import time
 import logging
 import subprocess
+import argparse
 from datetime import datetime
 from pathlib import Path
 import webbrowser
@@ -59,12 +65,14 @@ SPARK_ANALYTICS_SCRIPT = next(
 # Optional Grafana setup script (in case you also keep one on host)
 GRAFANA_SETUP_SCRIPT = SCRIPTS_DIR / "06_setup_grafana_dashboards.py"
 
+# Default wait settings - can be overridden via CLI
+STARTUP_TIMEOUT_DEFAULT = 120  # seconds
+STARTUP_INTERVAL_DEFAULT = 2   # polling interval in seconds
+OPEN_DASHBOARD_DELAY_DEFAULT = 0.8  # seconds between opening dashboards
+
 # Docker container names we care about
 REQUIRED_CONTAINERS = [
     "kafka-broker-1",
-    "kafka-broker-2",
-    "kafka-broker-3",
-    "kafka-broker-4",
     "timescaledb",
     "flink-jobmanager",
     "spark-master",
@@ -98,7 +106,7 @@ def is_container_healthy(name: str) -> bool:
     return val == "healthy"
 
 
-def wait_for_docker_services(timeout: int = 120, interval: int = 5) -> None:
+def wait_for_docker_services(timeout: int = STARTUP_TIMEOUT_DEFAULT, interval: int = STARTUP_INTERVAL_DEFAULT) -> None:
     """
     Wait until key containers are running, and TimescaleDB is healthy.
     """
@@ -109,11 +117,18 @@ def wait_for_docker_services(timeout: int = 120, interval: int = 5) -> None:
     while time.time() < deadline:
         all_up = True
         for name in REQUIRED_CONTAINERS:
+            # Check container is running
             if not is_container_running(name):
                 all_up = False
                 break
 
-        # require TimescaleDB health
+            # If container has a health status, require it to be healthy.
+            health = _docker_inspect(name, "{{.State.Health.Status}}")
+            if health and health.lower() != "healthy":
+                all_up = False
+                break
+
+        # require TimescaleDB health as well (explicit check)
         if not is_container_healthy("timescaledb"):
             all_up = False
 
@@ -148,9 +163,6 @@ def show_log_snippet() -> None:
     interesting = [
         "flink-taskmanager",
         "kafka-broker-1",
-        "kafka-broker-2",
-        "kafka-broker-3",
-        "kafka-broker-4",
         "timescaledb",
         "federated-aggregator",
         "kafka-producer",
@@ -198,7 +210,7 @@ def run_python_step_blocking(description: str, script_path: Path) -> None:
 def start_spark_analytics_nonblocking(description: str, script_path: Path) -> None:
     """
     Start Spark analytics script as a long-running host process (non-blocking).
-    That script is responsible for interacting with the Spark Master container.
+    Submit the job from inside the spark-master container to avoid host PySpark deps.
     """
     logger.info("=" * 70)
     logger.info("Starting: %s", description)
@@ -208,21 +220,38 @@ def start_spark_analytics_nonblocking(description: str, script_path: Path) -> No
         logger.warning("No Spark analytics script found (skipping)")
         return
 
-    # Let the script itself decide its log file location, but we hint the logs dir.
-    env = os.environ.copy()
-    env.setdefault("FLEAD_LOG_DIR", str(LOGS_DIR))
+    # Submit from spark-master container so PySpark and Spark binaries are available.
+    target_path = f"/opt/spark/scripts/{script_path.name}"
+    cmd = [
+        "docker",
+        "compose",
+        "exec",
+        "-T",
+        "spark-master",
+        "/opt/spark/bin/spark-submit",
+        "--master",
+        "spark://spark-master:7077",
+        target_path,
+    ]
 
-    proc = subprocess.Popen(
-        [sys.executable, str(script_path)],
-        cwd=str(PROJECT_ROOT),
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    logger.info("  Starting service (startup delay: 20s)...")
-    time.sleep(20)
-    logger.info("Service running (PID: %s)", proc.pid)
-    logger.info("  Logs: %s", LOGS_DIR / "spark_analytics.log")
+    submit_log = LOGS_DIR / "spark_analytics_submit.log"
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        submit_log.write_text(
+            f"CMD: {' '.join(cmd)}\nRET: {result.returncode}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}\n"
+        )
+        if result.returncode == 0:
+            logger.info("  Submitted Spark analytics via spark-master (script: %s)", target_path)
+            logger.info("  Check docker compose logs spark-master/spark-worker-1 for status.")
+        else:
+            logger.error("Spark analytics submission failed (see %s)", submit_log)
+    except Exception as e:
+        logger.error("Failed to submit Spark analytics job: %s", e)
 
 
 def submit_flink_local_training_job() -> None:
@@ -248,6 +277,9 @@ def submit_flink_local_training_job() -> None:
         "-py",
         "/opt/flink/scripts/03_flink_local_training.py",
     ]
+    # Ensure flink-jobmanager is up (short wait if necessary)
+    if not _wait_for_specific_containers(["flink-jobmanager"], timeout=60, interval=2):
+        logger.warning("Flink JobManager not ready, attempt to submit job anyway")
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
@@ -329,6 +361,7 @@ def print_access_points() -> None:
     logger.info("Spark Master:             http://localhost:8086")
     logger.info("TimescaleDB:              localhost:5432")
     logger.info("Monitoring Dashboard:     http://localhost:5001")
+    logger.info("Jupyter Dev UI:           http://localhost:8888")
     logger.info("")
 
 
@@ -389,12 +422,15 @@ def open_dashboards_in_browser() -> None:
         "http://localhost:8086",  # Spark master
         "http://localhost:8087",  # Spark worker (if mapped)
         "http://localhost:5001",  # Live monitoring dashboard
+        "http://localhost:8888",  # Jupyter Dev UI
     ]
+    # Use a configurable delay between opening dashboards
+    delay = float(os.getenv("OPEN_DASHBOARD_DELAY", OPEN_DASHBOARD_DELAY_DEFAULT))
     for url in urls:
         try:
             logger.info("Opening %s", url)
             webbrowser.open(url)
-            time.sleep(1.2)
+            time.sleep(delay)
         except Exception:
             pass
 
@@ -407,6 +443,25 @@ def open_dashboards_in_browser() -> None:
 # ---------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------
+def _wait_for_specific_containers(names: list[str], timeout: int = STARTUP_TIMEOUT_DEFAULT, interval: int = STARTUP_INTERVAL_DEFAULT) -> bool:
+    """Wait for a given list of containers (returns True if all up)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        all_up = True
+        for name in names:
+            if not is_container_running(name):
+                all_up = False
+                break
+            health = _docker_inspect(name, "{{.State.Health.Status}}")
+            if health and health.lower() != "healthy":
+                all_up = False
+                break
+        if all_up:
+            return True
+        time.sleep(interval)
+    return False
+
+
 def main() -> None:
     logger.info("=" * 68)
     logger.info("STARTING PIPELINE ORCHESTRATOR")
@@ -422,10 +477,24 @@ def main() -> None:
     logger.info("Pipeline logs will be saved to: %s", LOGS_DIR)
     logger.info("")
 
-    # 1) Wait for Docker services
-    wait_for_docker_services()
+    # 1) Show Docker status
     show_docker_ps()
     show_log_snippet()
+    # Parse any CLI overrides for wait behaviour
+    parser = argparse.ArgumentParser(description="FLEAD pipeline orchestrator")
+    parser.add_argument("--no-wait", action="store_true", help="skip waiting for container health checks")
+    parser.add_argument("--fast", action="store_true", help="use short wait timeouts for faster startup")
+    parser.add_argument("--timeout", type=int, default=os.getenv("STARTUP_TIMEOUT", STARTUP_TIMEOUT_DEFAULT), help="startup timeout in seconds")
+    parser.add_argument("--interval", type=int, default=os.getenv("STARTUP_INTERVAL", STARTUP_INTERVAL_DEFAULT), help="polling interval in seconds")
+    args = parser.parse_args()
+
+    # Adjust values for fast start
+    if args.fast:
+        args.timeout = min(args.timeout, 60)
+        args.interval = max(1, args.interval)
+
+    if not args.no_wait:
+        wait_for_docker_services(timeout=args.timeout, interval=args.interval)
 
     logger.info("")
     logger.info("====================================================================")
@@ -437,14 +506,21 @@ def main() -> None:
     # 2) Steps in order
     # 2a) Kafka Topics
     run_python_step_blocking(
-        "Setup Kafka Topics (multi-broker)",
+        "Setup Kafka Topics (single-broker)",
         KAFKA_TOPICS_SCRIPT,
     )
 
     # 2b) Flink local training job
+    # Ensure Flink components are ready
+    if not _wait_for_specific_containers(["flink-jobmanager"], timeout=(args.timeout if 'args' in locals() else STARTUP_TIMEOUT_DEFAULT), interval=(args.interval if 'args' in locals() else STARTUP_INTERVAL_DEFAULT)):
+        logger.warning("Timed out waiting for Flink JobManager; trying to submit job anyway")
     submit_flink_local_training_job()
 
     # 2c) Spark analytics (non-blocking)
+    # Ensure Spark master up before submitting the analytics job
+    if SPARK_ANALYTICS_SCRIPT:
+        if not _wait_for_specific_containers(["spark-master"], timeout=(args.timeout if 'args' in locals() else STARTUP_TIMEOUT_DEFAULT), interval=(args.interval if 'args' in locals() else STARTUP_INTERVAL_DEFAULT)):
+            logger.warning("Spark master not ready yet; submit attempt will proceed")
     start_spark_analytics_nonblocking(
         "Spark Analytics (Batch + Stream + Model Evaluation)",
         SPARK_ANALYTICS_SCRIPT,

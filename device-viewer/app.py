@@ -49,7 +49,11 @@ def list_device_files():
     processed = get_processed_dir()
     if not os.path.isdir(processed):
         return []
-    files = [f for f in os.listdir(processed) if f.lower().endswith('.csv')]
+    # Only count device CSVs (e.g., device_0.csv); ignore other CSVs like merged_data.csv.
+    files = [
+        f for f in os.listdir(processed)
+        if f.lower().endswith('.csv') and f.lower().startswith('device_')
+    ]
 
     def keyfn(name):
         # Return a consistent tuple key so sorting never compares int and str directly.

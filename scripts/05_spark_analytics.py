@@ -11,7 +11,7 @@ FLEAD Spark Analytics - Batch & Streaming Analysis with Global Model Evaluation
 import logging
 import json
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import pickle
 from pathlib import Path
 
@@ -24,6 +24,8 @@ from pyspark.sql.functions import (
     avg,
     stddev,
     count,
+    min as spark_min,
+    max as spark_max,
     when,
     lit,
     to_timestamp,
@@ -63,7 +65,7 @@ from config_loader import get_db_config, get_kafka_config  # noqa: E402
 # Database config (auto-detect Docker vs host)
 DB_CONFIG = get_db_config()
 
-# Kafka (for streaming) – same multi-broker config as other services
+# Kafka (for streaming) – single-broker bootstrap configuration (uses get_kafka_config())
 _kafka_conf = get_kafka_config()
 _raw_bootstrap = _kafka_conf["bootstrap_servers"]
 if isinstance(_raw_bootstrap, str):
@@ -76,8 +78,14 @@ else:
 KAFKA_BOOTSTRAP_SERVERS_STR = ",".join(KAFKA_BOOTSTRAP_SERVERS_LIST)
 KAFKA_TOPIC = "edge-iiot-stream"
 
-# Spark
-SPARK_MASTER = "spark://spark-master:7077"
+# Spark master (env override; auto-detect host vs container)
+def _default_spark_master() -> str:
+    if os.path.exists("/.dockerenv"):
+        return "spark://spark-master:7077"
+    return "spark://localhost:7077"
+
+
+SPARK_MASTER = os.getenv("SPARK_MASTER", _default_spark_master())
 SPARK_PARALLELISM = 4
 
 # Analysis
@@ -86,6 +94,19 @@ ANOMALY_THRESHOLD_STD = 2.5
 
 # Global model location – shared with federated aggregator
 MODEL_DIR = Path("/app/models/global")
+
+# ---------------------------------------------------------------------
+# Global Model placeholder (needed to unpickle models saved by aggregator)
+# ---------------------------------------------------------------------
+class GlobalModel:
+    def __init__(self, version: int = 0):
+        self.version = version
+        self.weights = None
+        self.accuracy = 0.0
+        self.created_at = datetime.now()
+        self.num_devices_aggregated = 0
+        self.aggregation_round = 0
+
 
 # ---------------------------------------------------------------------
 # Global Model Evaluator
@@ -202,21 +223,44 @@ class TimescaleDBManager:
 
     # --------------------- Batch Analysis ---------------------
     def insert_batch_results(self, results: List[Dict[str, Any]]) -> None:
-        """Insert batch analysis results as JSON into batch_analysis_results."""
+        """
+        Insert batch analysis results into batch_analysis_results using the
+        schema from 00_init_database.py.
+        """
         if not results or not self.conn:
             return
 
         try:
             payload = []
+            now_ts = datetime.utcnow()
             for r in results:
-                analysis_type = r.get("metric_name", "unknown_metric")
-                result_json = json.dumps(r)
-                payload.append((analysis_type, result_json))
+                payload.append(
+                    (
+                        r.get("device_id"),
+                        r.get("metric_name", "unknown_metric"),
+                        r.get("avg_value"),
+                        r.get("min_value"),
+                        r.get("max_value"),
+                        r.get("stddev_value"),
+                        r.get("sample_count"),
+                        r.get("analysis_date"),
+                        now_ts,
+                    )
+                )
 
             with self.conn.cursor() as cur:
                 query = """
-                    INSERT INTO batch_analysis_results (analysis_type, result_data)
-                    VALUES %s
+                    INSERT INTO batch_analysis_results (
+                        device_id,
+                        metric_name,
+                        avg_value,
+                        min_value,
+                        max_value,
+                        stddev_value,
+                        sample_count,
+                        analysis_date,
+                        analysis_timestamp
+                    ) VALUES %s
                 """
                 execute_values(cur, query, payload)
                 self.conn.commit()
@@ -229,30 +273,44 @@ class TimescaleDBManager:
     # --------------------- Stream Analysis ---------------------
     def insert_stream_results(self, results: List[Dict[str, Any]]) -> None:
         """
-        Insert stream analysis results into stream_analysis_results:
-          - window_start, window_end (TIMESTAMPTZ)
-          - analysis_data (JSONB)
+        Insert stream analysis results into stream_analysis_results table
+        (device_id, metric_name, raw_value, moving_avg_30s, moving_avg_5m,
+        z_score, is_anomaly, anomaly_confidence, timestamp).
         """
         if not results or not self.conn:
             return
 
         try:
             payload = []
+            now_ts = datetime.utcnow()
             for r in results:
-                # Expect keys 'window_start' and 'window_end' from the Spark job
-                window_start = r.get("window_start")
-                window_end = r.get("window_end")
-                # Remove those from JSON payload to avoid duplication
-                clean = dict(r)
-                clean.pop("window_start", None)
-                clean.pop("window_end", None)
-                analysis_json = json.dumps(clean)
-                payload.append((window_start, window_end, analysis_json))
+                payload.append(
+                    (
+                        r.get("device_id"),
+                        r.get("metric_name", "data_metric"),
+                        r.get("raw_value"),
+                        r.get("moving_avg_30s"),
+                        r.get("moving_avg_5m"),
+                        r.get("z_score"),
+                        bool(r.get("is_anomaly")) if r.get("is_anomaly") is not None else False,
+                        r.get("anomaly_confidence"),
+                        r.get("window_end") or r.get("window_start") or now_ts,
+                    )
+                )
 
             with self.conn.cursor() as cur:
                 query = """
-                    INSERT INTO stream_analysis_results (window_start, window_end, analysis_data)
-                    VALUES %s
+                    INSERT INTO stream_analysis_results (
+                        device_id,
+                        metric_name,
+                        raw_value,
+                        moving_avg_30s,
+                        moving_avg_5m,
+                        z_score,
+                        is_anomaly,
+                        anomaly_confidence,
+                        timestamp
+                    ) VALUES %s
                 """
                 execute_values(cur, query, payload)
                 self.conn.commit()
@@ -299,25 +357,34 @@ class TimescaleDBManager:
         self,
         metric_name: str,
         value: float,
-        metric_type: str = "gauge",
     ) -> None:
         """
         Insert a dashboard metric row.
-        (We don't use ON CONFLICT here because the table has no unique constraint
-         on metric_name; Grafana can handle time series.)
+        Compatible with existing schema (metric_name, metric_value [, metric_type?]).
+        If metric_type column exists, we insert 'gauge'; otherwise we insert two columns.
         """
         if not self.conn:
             return
 
         try:
             with self.conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO dashboard_metrics (metric_name, metric_value, metric_type)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (metric_name, value, metric_type),
-                )
+                # Try three-column insert; fall back to two columns if metric_type is absent.
+                try:
+                    cur.execute(
+                        """
+                        INSERT INTO dashboard_metrics (metric_name, metric_value, metric_type)
+                        VALUES (%s, %s, %s)
+                        """,
+                        (metric_name, value, "gauge"),
+                    )
+                except Exception:
+                    cur.execute(
+                        """
+                        INSERT INTO dashboard_metrics (metric_name, metric_value)
+                        VALUES (%s, %s)
+                        """,
+                        (metric_name, value),
+                    )
                 self.conn.commit()
         except Exception as e:
             logger.error(f"Error updating metric {metric_name}: {e}", exc_info=True)
@@ -391,6 +458,8 @@ class SparkAnalyticsEngine:
                 .agg(
                     avg(col("temperature")).alias("avg_value"),
                     stddev(col("temperature")).alias("stddev_value"),
+                    spark_min(col("temperature")).alias("min_value"),
+                    spark_max(col("temperature")).alias("max_value"),
                     count("*").alias("sample_count"),
                 )
                 .withColumn("metric_name", lit("temperature"))
@@ -406,7 +475,17 @@ class SparkAnalyticsEngine:
             logger.error(f"✗ Batch analysis error: {e}", exc_info=True)
 
     # ===================== STREAM ANALYSIS =====================
-    def run_stream_analysis(self, run_seconds: int = 60) -> None:
+    def _write_stream_batch(self, df: DataFrame, epoch_id: int) -> None:
+        """foreachBatch sink to TimescaleDB for stream analysis output."""
+        try:
+            rows = [r.asDict() for r in df.collect()]
+            if rows:
+                self.db.insert_stream_results(rows)
+                logger.info("✓ Stream batch %s: wrote %d rows", epoch_id, len(rows))
+        except Exception as e:
+            logger.error(f"Error writing stream batch {epoch_id}: {e}", exc_info=True)
+
+    def run_stream_analysis(self, run_seconds: Optional[int] = None) -> None:
         """
         Real-time stream analysis from Kafka topic edge-iiot-stream.
 
@@ -471,43 +550,25 @@ class SparkAnalyticsEngine:
                 .alias("anomaly_confidence"),
                 col("time_window.start").alias("window_start"),
                 col("time_window.end").alias("window_end"),
+                col("time_window.end").alias("timestamp"),
             )
 
             query = (
-                result.writeStream.outputMode("update")
-                .format("memory")
-                .queryName("stream_analysis")
+                result.writeStream.outputMode("append")
+                .foreachBatch(self._write_stream_batch)
                 .option("checkpointLocation", "/tmp/stream_checkpoint")
                 .start()
             )
 
-            logger.info("✓ Stream analysis query started (name=stream_analysis)")
+            logger.info("✓ Stream analysis query started (foreachBatch sink)")
 
-            import time as _time
-
-            timeout = _time.time() + run_seconds
-            while query.isActive and _time.time() < timeout:
-                _time.sleep(10)
-                try:
-                    stream_results = self.spark.sql(
-                        "SELECT * FROM stream_analysis LIMIT 200"
-                    )
-                    if stream_results.count() > 0:
-                        rows = stream_results.collect()
-                        result_dicts = [r.asDict() for r in rows]
-                        self.db.insert_stream_results(result_dicts)
-                        logger.info(
-                            "✓ Processed %d stream analysis rows into TimescaleDB",
-                            len(result_dicts),
-                        )
-                except Exception as inner_e:
-                    logger.error(
-                        f"Error while pulling from memory stream_analysis: {inner_e}",
-                        exc_info=True,
-                    )
-
-            query.stop()
-            logger.info("✓ Stream analysis stopped")
+            # If run_seconds is None, keep running until externally stopped.
+            if run_seconds is None:
+                query.awaitTermination()
+            else:
+                query.awaitTermination(run_seconds)
+                query.stop()
+                logger.info("✓ Stream analysis stopped after %ss", run_seconds)
 
         except Exception as e:
             logger.error(f"✗ Stream analysis error: {e}", exc_info=True)
@@ -539,20 +600,10 @@ class SparkAnalyticsEngine:
     def update_dashboard_metrics(self) -> None:
         """Push high-level metrics into dashboard_metrics for Grafana."""
         try:
-            self.db.update_dashboard_metric(
-                "spark_batch_jobs_completed", 1.0, metric_type="count"
-            )
-            self.db.update_dashboard_metric(
-                "stream_anomalies_detected", 42.0, metric_type="count"
-            )
-            self.db.update_dashboard_metric(
-                "global_model_accuracy",
-                float(self.model_eval.accuracy),
-                metric_type="percentage",
-            )
-            self.db.update_dashboard_metric(
-                "average_processing_latency", 2.5, metric_type="seconds"
-            )
+            self.db.update_dashboard_metric("spark_batch_jobs_completed", 1.0)
+            self.db.update_dashboard_metric("stream_anomalies_detected", 42.0)
+            self.db.update_dashboard_metric("global_model_accuracy", float(self.model_eval.accuracy))
+            self.db.update_dashboard_metric("average_processing_latency", 2.5)
             logger.info("✓ Dashboard metrics updated")
         except Exception as e:
             logger.error(f"Error updating dashboard metrics: {e}", exc_info=True)

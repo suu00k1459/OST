@@ -61,13 +61,8 @@ if ENV_BOOTSTRAP:
     logger.info(f"KAFKA_BOOTSTRAP_SERVERS from env: {KAFKA_BROKER}")
 else:
     # INSIDE DOCKER NETWORK: use PLAINTEXT ports (9092) on each broker
-    # Host mapping to 9092/9093/9094/9095 is only for clients on the host.
-    KAFKA_BROKER = (
-        "kafka-broker-1:9092,"
-        "kafka-broker-2:9092,"
-        "kafka-broker-3:9092,"
-        "kafka-broker-4:9092"
-    )
+    # Host mapping to 9092 is only for clients on the host.
+    KAFKA_BROKER = "kafka-broker-1:9092"
     logger.info(f"Using default internal Kafka bootstrap: {KAFKA_BROKER}")
 
 INPUT_TOPIC = "edge-iiot-stream"

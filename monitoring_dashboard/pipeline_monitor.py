@@ -46,19 +46,15 @@ DB_CONFIG = {
 # Kafka bootstrap – same env as other services
 KAFKA_BOOTSTRAP_SERVERS = os.getenv(
     "KAFKA_BOOTSTRAP_SERVERS",
-    "kafka-broker-1:9092,kafka-broker-2:9092,"
-    "kafka-broker-3:9092,kafka-broker-4:9092",
+    "kafka-broker-1:9092",
 )
 
 # --------------------------------------------------------------------
 # Service definitions
 # --------------------------------------------------------------------
 TCP_SERVICES = {
-    # Core Kafka brokers
+    # Core Kafka broker (single)
     "kafka-broker-1": ("kafka-broker-1", 9092),
-    "kafka-broker-2": ("kafka-broker-2", 9092),
-    "kafka-broker-3": ("kafka-broker-3", 9092),
-    "kafka-broker-4": ("kafka-broker-4", 9092),
 
     # Storage
     "timescaledb": ("timescaledb", 5432),

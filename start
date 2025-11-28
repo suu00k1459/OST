@@ -26,8 +26,20 @@ fi
 echo "OK"
 echo
 
+echo "Checking Docker Compose..."
+if docker compose version >/dev/null 2>&1; then
+  DOCKER_COMPOSE=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+  DOCKER_COMPOSE=(docker-compose)
+else
+  echo "[ERROR] Docker Compose (plugin or docker-compose) not found."
+  exit 1
+fi
+echo "OK (using: ${DOCKER_COMPOSE[*]})"
+echo
+
 echo "Starting optional Jupyter UI (dev)..."
-docker compose up -d jupyter-dev || true
+"${DOCKER_COMPOSE[@]}" up -d jupyter-dev || true
 echo "  Jupyter UI (if started) at: http://localhost:8888"
 echo
 
@@ -46,7 +58,7 @@ if [ ! -f "$DEVICE_CSV" ] && { [ ! -d "$CHUNKS_DIR" ] || [ -z "$(ls -A "$CHUNKS_
     exit 1
   fi
 
-  if ! docker compose run --rm data-preprocessor; then
+  if ! "${DOCKER_COMPOSE[@]}" run --rm data-preprocessor; then
     echo "  [WARNING] data-preprocessor container returned a non-zero exit code."
 
     if [ -f "$DEVICE_CSV" ] || { [ -d "$CHUNKS_DIR" ] && [ -n "$(ls -A "$CHUNKS_DIR" 2>/dev/null)" ]; }; then
@@ -67,7 +79,7 @@ echo "===================================================================="
 echo "CLEANUP PHASE (POSIX)"
 echo "===================================================================="
 echo
-docker compose down || true
+"${DOCKER_COMPOSE[@]}" down || true
 docker container rm -f zookeeper kafka timescaledb grafana kafka-ui \
   flink-jobmanager flink-taskmanager spark-master spark-worker-1 \
   kafka-broker-1 kafka-broker-2 kafka-broker-3 kafka-broker-4 \
@@ -81,12 +93,12 @@ echo "===================================================================="
 echo "DOCKER SERVICES STARTUP (POSIX)"
 echo "===================================================================="
 echo
-docker compose up -d
+"${DOCKER_COMPOSE[@]}" up -d
 echo
 
 echo "Waiting 30 seconds for services to come up..."
 sleep 30
-docker compose ps
+"${DOCKER_COMPOSE[@]}" ps
 echo
 
 echo "===================================================================="

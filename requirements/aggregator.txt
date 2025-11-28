@@ -1,0 +1,9 @@
+numpy
+pandas
+scikit-learn
+psycopg2-binary
+sqlalchemy
+kafka-python
+python-dotenv
+requests
+numexpr

@@ -3,7 +3,7 @@
 01_setup_kafka_topics.py
 
 Create all Kafka topics needed by the FLEAD pipeline
-for the multi-broker cluster.
+for the Kafka cluster (single-broker mode).
 
 This script runs on the *HOST* but uses `docker exec` to run the
 `kafka-topics` CLI *inside* a Kafka container (default: kafka-broker-1),
@@ -49,28 +49,28 @@ KAFKA_BOOTSTRAP_INTERNAL = os.getenv(
 TOPICS: Dict[str, Dict[str, Any]] = {
     "edge-iiot-stream": {
         "partitions": 4,
-        "replication_factor": 3,
+        "replication_factor": 1,
     },
     "local-model-updates": {
         "partitions": 4,
-        "replication_factor": 3,
+        "replication_factor": 1,
     },
     "global-model-updates": {
         "partitions": 4,
-        "replication_factor": 3,
+        "replication_factor": 1,
     },
     "anomalies": {
         "partitions": 4,
-        "replication_factor": 3,
+        "replication_factor": 1,
     },
     "analytics-results": {
         "partitions": 4,
-        "replication_factor": 3,
+        "replication_factor": 1,
     },
 }
 
-MAX_ATTEMPTS = 40
-SLEEP_SECONDS = 3
+MAX_ATTEMPTS = 120
+SLEEP_SECONDS = 5
 
 
 # ---------------------------------------------------------------------

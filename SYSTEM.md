@@ -1,10 +1,10 @@
-# FLEAD: Federated Learning for IoT Anomaly Detection with Multi-Broker Kafka
+# FLEAD: Federated Learning for IoT Anomaly Detection with Single-Broker Kafka
 
 ---
 
 ## SYSTEM OVERVIEW
 
-FLEAD (Federated Learning for Edge Anomaly Detection) is a distributed machine learning system that trains 2,407 IoT devices locally across 4 independent Kafka brokers while coordinating globally to improve anomaly detection accuracy. The multi-broker architecture simulates realistic enterprise IoT deployments with independent data streams and fault tolerance.
+FLEAD (Federated Learning for Edge Anomaly Detection) is a distributed machine learning system that trains 2,407 IoT devices locally using a single Kafka broker while coordinating globally to improve anomaly detection accuracy. The single-broker configuration is optimized for local testing and development.
 
 ### The Problem We're Solving:
 
@@ -43,18 +43,12 @@ Multi-Broker Kafka Cluster:
     │     KAFKA MULTI-BROKER       │    │   DEVICE DISTRIBUTION        │
     │     (4 Independent Brokers)  │    │   (devices modulo 4)         │
     │                              │    │                              │
-    │ Broker 1: Port 29092/9092    │    │ Broker 1: device_0-599      │
-    │ Broker 2: Port 29093/9093    │◄───┤ Broker 2: device_600-1199   │
-    │ Broker 3: Port 29094/9094    │    │ Broker 3: device_1200-1799  │
-    │ Broker 4: Port 29095/9095    │    │ Broker 4: device_1800-2399  │
+    │ Broker 1: Port 9092          │    │ Broker 1: device_0-2399      │
     │                              │    │                              │
     │ KRaft Mode (no Zookeeper)    │    │ 600 devices per broker       │
     │ Replication Factor: 3        │    │ Replicated across 3 brokers  │
     │ Bootstrap Servers:           │    │                              │
-    │ broker-1:29092,              │    │                              │
-    │ broker-2:29093,              │    │                              │
-    │ broker-3:29094,              │    │                              │
-    │ broker-4:29095               │    │                              │
+    │ broker-1:9092                │    │                              │
     └──────────┬───────────────────┘    └──────────────────────────────┘
                │
    Topics: edge-iiot-stream (replicated across all brokers)
@@ -239,10 +233,7 @@ Multi-Broker Kafka Cluster:
 
 **Architecture: 4-Broker KRaft Cluster**
 
-- Broker 1 (Port 29092): devices_0-599, Controller quorum member
-- Broker 2 (Port 29093): devices_600-1199, Controller quorum member
-- Broker 3 (Port 29094): devices_1200-1799, Controller quorum member
-- Broker 4 (Port 29095): devices_1800-2399, Broker only
+- Broker 1 (Port 9092): devices_0-2399 (single broker)
 
 **What it does:**
 

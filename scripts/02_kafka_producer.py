@@ -1,18 +1,10 @@
 """
-Deprecated: Multi-Broker Producer
+Single-Broker Kafka Producer for Edge-IIoT
+Streams 2400 IoT devices into a single Kafka broker (kafka-broker-1:9092).
 
-This file was the old multi-broker Kafka producer used when the
-project ran a 4-broker Kafka cluster. The repository now uses a
-single-broker producer located at `scripts/02_kafka_producer.py`.
-
-Please use the new script and update any run configurations as needed.
+Usage:
+    python scripts/02_kafka_producer.py --source data/processed --rate 10
 """
-
-import sys
-
-if __name__ == "__main__":
-    print("This script is deprecated. Use scripts/02_kafka_producer.py instead.")
-    sys.exit(2)
 
 import json
 import time
@@ -40,8 +32,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class MultiBrokerProducer:
-    """Kafka producer distributing data across 4 brokers."""
+class SingleBrokerProducer:
+    """Kafka producer streaming data to a single broker."""
 
     _IS_DOCKER = os.path.exists("/.dockerenv")
 
@@ -49,29 +41,14 @@ class MultiBrokerProducer:
     ENV_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 
     if ENV_BOOTSTRAP:
-        # Respect explicit env variable completely
         BROKER_BOOTSTRAP_SERVERS = ENV_BOOTSTRAP
         logger.info(f"Using KAFKA_BOOTSTRAP_SERVERS from environment: {BROKER_BOOTSTRAP_SERVERS}")
-        BROKERS = {}  # Not used directly, kept for completeness
+    else:
+        if _IS_DOCKER:
+            BROKER_BOOTSTRAP_SERVERS = "kafka-broker-1:9092"
         else:
-            if _IS_DOCKER:
-                # Inside Docker network -> use internal PLAINTEXT listener ports (9092)
-                BROKERS = {
-                    "broker_1": "kafka-broker-1:9092",
-                    "broker_2": "kafka-broker-1:9092",
-                    "broker_3": "kafka-broker-1:9092",
-                    "broker_4": "kafka-broker-1:9092",
-                }
-                BROKER_BOOTSTRAP_SERVERS = "kafka-broker-1:9092"
-            else:
-                # From host -> use mapped host ports 9092
-                BROKERS = {
-                    "broker_1": "localhost:9092",
-                    "broker_2": "localhost:9092",
-                    "broker_3": "localhost:9092",
-                    "broker_4": "localhost:9092",
-                }
-                BROKER_BOOTSTRAP_SERVERS = "localhost:9092"    DEVICES_PER_BROKER = 2400
+            BROKER_BOOTSTRAP_SERVERS = "localhost:9092"
+
     TOTAL_DEVICES = 2400
 
     def __init__(
@@ -237,146 +214,83 @@ class MultiBrokerProducer:
                             "broker_idx": broker_idx,
                             "record": record,
                         }
-
                     )
 
-        if not all_records:
-            logger.error("No device data loaded")
+        # Sort by timestamp to simulate real-time playback
+        # Use 0 if 'ts' is missing to avoid crash
+        all_records.sort(key=lambda x: x["record"].get("ts", 0))
+
+        for item in all_records:
+            yield item["record"], item["device_id"], item["broker_idx"]
+
+    # -------------------------------------------------
+    # MAIN RUN LOOP
+    # -------------------------------------------------
+    def run(self, directory: str) -> None:
+        """Main loop: load data, connect, and stream."""
+        self.connect()
+        
+        broker_devices = self.load_and_distribute_devices(directory)
+        if not broker_devices or not broker_devices[0]:
+            logger.error("No devices loaded. Exiting.")
             return
 
-        logger.info(f"Ready to stream {len(all_records)} records")
-
-        while True:
-            selected = random.choice(all_records)
-            device_id = selected["device_id"]
-            broker_idx = selected["broker_idx"]
-            record = selected["record"]
-
-            metric_value = record.get("tcp.ack", record.get("tcp.seq", 0.0)) or 0.0
-
-            message = {
-                "device_id": device_id,
-                "broker": f"broker_{broker_idx + 1}",
-                "timestamp": datetime.now().isoformat(),
-                "data": float(metric_value),
-                "raw_features": record,
-            }
-
-            yield message, device_id, broker_idx
-
-    # -------------------------------------------------
-    # MAIN SEND LOOP
-    # -------------------------------------------------
-    def send_messages(
-        self, broker_devices: Dict[int, List[Tuple[str, pd.DataFrame]]]
-    ) -> None:
-        if not self.producer:
-            raise RuntimeError("Producer not connected. Call connect() first.")
-
+        logger.info(f"Starting stream at {self.rows_per_second} rows/sec...")
         self.start_time = time.time()
-        generator = self.stream_from_broker_devices(broker_devices)
-
-        logger.info("\n" + "=" * 70)
-        logger.info(f"Starting message stream at {self.rows_per_second} msgs/sec")
-        logger.info("Press Ctrl+C to stop")
-        logger.info("=" * 70 + "\n")
 
         try:
-            for message, device_id, broker_idx in generator:
-                try:
-                    future = self.producer.send(
+            while True:
+                stream = self.stream_from_broker_devices(broker_devices)
+                
+                for record, device_id, broker_idx in stream:
+                    # Send to Kafka
+                    # We don't specify partition, let the partitioner decide (or round-robin)
+                    self.producer.send(
                         self.topic,
-                        value=message,
-                        key=device_id.encode("utf-8"),
+                        value=record
                     )
-                    future.get(timeout=10)
-
+                    
                     self.messages_sent += 1
-
-                    if self.messages_sent % 100 == 0:
+                    
+                    if self.messages_sent % 500 == 0:
                         elapsed = time.time() - self.start_time
-                        rate = self.messages_sent / elapsed if elapsed > 0 else 0.0
+                        rate = self.messages_sent / elapsed if elapsed > 0 else 0
                         logger.info(
                             f"Sent {self.messages_sent} msgs | "
-                            f"{device_id} → broker {broker_idx + 1} | "
-                            f"rate={rate:.2f} msg/s"
+                            f"Last: {device_id} | "
+                            f"Rate: {rate:.2f} msg/s"
                         )
-
+                    
                     time.sleep(self.interval)
 
-                except KafkaError as e:
-                    logger.error(f"Kafka error: {e}")
-                    self.errors += 1
-                    if self.errors > 10:
-                        logger.error("Too many errors, stopping producer.")
-                        break
+                if not self.repeat:
+                    break
+                
+                logger.info("Finished one pass through data. Repeating...")
 
         except KeyboardInterrupt:
-            logger.info("Shutdown requested (Ctrl+C)")
+            logger.info("Stopped by user.")
+        except Exception as e:
+            logger.error(f"Error in producer loop: {e}")
         finally:
-            self.shutdown()
-
-    # -------------------------------------------------
-    # CLEANUP
-    # -------------------------------------------------
-    def shutdown(self) -> None:
-        if self.producer:
-            self.producer.flush()
-            self.producer.close()
-
-        elapsed = time.time() - self.start_time if self.start_time else 0.0
-        logger.info("\n" + "=" * 70)
-        logger.info("PRODUCER SHUTDOWN")
-        logger.info(f"Total messages sent: {self.messages_sent}")
-        logger.info(f"Total errors: {self.errors}")
-        logger.info(f"Elapsed time: {elapsed:.2f} s")
-        if elapsed > 0:
-            logger.info(
-                f"Average rate: {self.messages_sent / elapsed:.2f} msgs/sec"
-            )
-        logger.info("=" * 70 + "\n")
+            if self.producer:
+                self.producer.flush()
+                self.producer.close()
+            logger.info("Producer closed.")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Multi-Broker Edge-IIoT Kafka Producer"
-    )
-    parser.add_argument(
-        "--source",
-        type=str,
-        default="data/processed",
-        help="Path to device CSV files or directory",
-    )
-    parser.add_argument(
-        "--rate",
-        type=int,
-        default=10,
-        help="Messages per second",
-    )
-    parser.add_argument(
-        "--topic",
-        type=str,
-        default="edge-iiot-stream",
-        help="Kafka topic name",
-    )
-
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", default="data/processed", help="Data directory")
+    parser.add_argument("--rate", type=int, default=10, help="Rows per second")
+    parser.add_argument("--topic", default="edge-iiot-stream", help="Kafka topic")
     args = parser.parse_args()
 
-    producer = MultiBrokerProducer(
+    producer = SingleBrokerProducer(
         topic=args.topic,
-        rows_per_second=args.rate,
+        rows_per_second=args.rate
     )
-
-    try:
-        producer.connect()
-        broker_devices = producer.load_and_distribute_devices(args.source)
-        if broker_devices:
-            producer.send_messages(broker_devices)
-        else:
-            logger.error("No device data loaded, exiting.")
-    except Exception as e:
-        logger.error(f"Fatal error: {e}")
-        sys.exit(1)
+    producer.run(args.source)
 
 
 if __name__ == "__main__":

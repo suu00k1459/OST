@@ -14,15 +14,11 @@ RUN apt-get update && apt-get install -y \
 # Make pip more tolerant of slow / flaky connections
 ENV PIP_DEFAULT_TIMEOUT=300
 
-# Use the single global requirements.txt as a constraint file
-COPY requirements.txt .
+# Use service-specific requirements
+COPY requirements/timescaledb-collector.txt requirements.txt
 
-# Install ONLY the packages this service needs,
-# constrained by the global requirements.txt
-RUN pip install --no-cache-dir \
-    kafka-python \
-    psycopg2-binary \
-    -c requirements.txt
+# Install ONLY the packages this service needs
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY scripts/config_loader.py ./scripts/
@@ -35,7 +31,7 @@ ENV DB_PORT=5432
 ENV DB_NAME=flead
 ENV DB_USER=flead
 ENV DB_PASSWORD=password
-ENV KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092,kafka-broker-4:9092
+ENV KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092
 
 # Run collector
 CMD ["python", "scripts/kafka_to_timescaledb_collector.py"]

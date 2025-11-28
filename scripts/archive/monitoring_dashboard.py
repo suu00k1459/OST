@@ -32,7 +32,7 @@ DB_CONFIG = {
 # Default uses PLAINTEXT 9092 on all 4 brokers; docker-compose will set env too
 KAFKA_BROKERS = os.getenv(
     "KAFKA_BOOTSTRAP_SERVERS",
-    "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092,kafka-broker-4:9092",
+    "kafka-broker-1:9092",
 ).split(",")
 
 # Global metrics

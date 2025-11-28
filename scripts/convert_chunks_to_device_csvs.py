@@ -12,7 +12,7 @@ Output:
     - device_0.csv, device_1.csv, ..., device_N.csv
 
 These CSVs are then consumed by:
-  scripts/02_kafka_producer_multi_broker.py --source data/processed
+    scripts/02_kafka_producer.py --source data/processed
 """
 
 import sys
@@ -224,7 +224,7 @@ def main() -> int:
     logger.info("Next step: start the Kafka producer (inside Docker):")
     logger.info("  docker compose up -d kafka-producer")
     logger.info("or from host (if you run it locally):")
-    logger.info("  python scripts/02_kafka_producer_multi_broker.py --source data/processed")
+    logger.info("  python scripts/02_kafka_producer.py --source data/processed")
     logger.info("")
 
     return 0

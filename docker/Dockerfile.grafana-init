@@ -13,16 +13,11 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy global requirements to use as constraints (NOT full install)
-COPY requirements.txt .
+# Copy service-specific requirements
+COPY requirements/grafana-init.txt requirements.txt
 
-# Install only what this service actually needs, constrained by global requirements
-# - requests         → for calling Grafana HTTP API
-# - python-dotenv    → if config_loader / setup script reads a .env file
-RUN pip install --no-cache-dir \
-    requests \
-    python-dotenv \
-    -c requirements.txt
+# Install only what this service actually needs
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY scripts/config_loader.py ./scripts/

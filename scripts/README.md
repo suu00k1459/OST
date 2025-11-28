@@ -12,6 +12,15 @@ All scripts in this folder are now numbered to show the execution order. The sys
 
 These are supporting scripts, executed as needed, not part of main pipeline:
 
+#### Stage 0: `data_preprocessor.py` (Optional but recommended)
+
+- **Purpose**: Download the Edge-IIoTSet dataset from Kaggle, clean/normalize the dataset, generate the merged CSV and chunked preprocessed features to `data/processed/chunks/` for the pipeline.
+- **When**: Run automatically by `START.bat` (or `pipeline_orchestrator.py`) if `data/processed/chunks/` is missing, or run manually when you want to regenerate data.
+- **Prerequisite**: Place your Kaggle API token file at `./kaggle/kaggle.json` in the repository root. Docker Compose mounts `./kaggle` into `/root/.kaggle` inside the `data-preprocessor` and `jupyter-dev` containers. This is necessary for non-interactive Kaggle API access.
+- **Manual Usage**: `python data_preprocessor.py` (ensure you have `kaggle.json` and required packages installed locally if not using containers)
+- **Output**: Creates `data/raw/`, `data/processed/merged_data.csv`, `data/processed/preprocessor.pkl` (if joblib installed), and `data/processed/chunks/` containing `X_chunk_*.npz` and `y_chunk_*.npy` files.
+
+
 #### `00_install_dependencies.py`
 
 -   **Purpose**: Install required Python packages
@@ -195,6 +204,20 @@ This automatically:
 2. Runs pipeline_orchestrator.py
 3. Executes all scripts in correct order
 4. Keeps all services running
+Tip: Use the helper `scripts/cleanup_and_build.ps1` for safe cleanup and no-cache rebuilds.
+
+Examples (PowerShell):
+
+```powershell
+# Cleanup, rebuild (no-cache) and do NOT start the stack
+.\scripts\cleanup_and_build.ps1
+
+# Cleanup, rebuild (no-cache) and start the stack
+.\scripts\cleanup_and_build.ps1 -Start
+
+# Cleanup, rebuild, and remove volumes (DESTRUCTIVE) + start
+.\scripts\cleanup_and_build.ps1 -RemoveVolumes -Start
+```
 
 ### Manual (Not Recommended)
 

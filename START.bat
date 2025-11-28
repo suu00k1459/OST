@@ -57,10 +57,10 @@ set "CHUNK_FILE=data\processed\chunks\X_chunk_0.npz"
 
 REM If preprocessed data already exists, skip
 IF EXIST "%DEVICE_CSV%" (
-    echo   Preprocessed data already exists (device CSV: %DEVICE_CSV%). Skipping data preprocessing...
+    echo   Preprocessed data already exists ^(device CSV: %DEVICE_CSV%^). Skipping data preprocessing...
 ) ELSE (
     IF EXIST "%CHUNK_FILE%" (
-        echo   Preprocessed data already exists (chunk file: %CHUNK_FILE%). Skipping data preprocessing...
+        echo   Preprocessed data already exists ^(chunk file: %CHUNK_FILE%^). Skipping data preprocessing...
     ) ELSE (
         echo   No preprocessed data found, running Docker data-preprocessor...
 
@@ -108,7 +108,7 @@ docker compose down >nul 2>&1
 REM Extra hard cleanup (safe even if some containers don't exist)
 docker container rm -f zookeeper kafka timescaledb grafana kafka-ui ^
     flink-jobmanager flink-taskmanager spark-master spark-worker-1 ^
-    kafka-broker-1 kafka-broker-2 kafka-broker-3 kafka-broker-4 ^
+    kafka-broker-1 ^
     timescaledb-collector federated-aggregator device-viewer ^
     monitoring-dashboard grafana-init database-init >nul 2>&1
 
@@ -127,7 +127,7 @@ echo Starting Docker containers...
 docker compose up -d
 echo.
 
-echo Waiting 30 seconds for services to come up...
+echo Waiting 30 seconds for services to come up (single-broker setup)...
 timeout /t 30 >nul
 docker compose ps
 echo.
@@ -140,7 +140,23 @@ echo STARTING PIPELINE ORCHESTRATOR (WINDOWS)
 echo ====================================================================
 echo.
 
-call python scripts\pipeline_orchestrator.py
+REM Handle optional startup flags
+SET "ORCH_FLAGS="
+FOR %%A IN (%*) DO (
+    IF /I "%%~A"=="--fast" (
+        SET "ORCH_FLAGS=!ORCH_FLAGS! --fast"
+    ) ELSE IF /I "%%~A"=="--no-wait" (
+        SET "ORCH_FLAGS=!ORCH_FLAGS! --no-wait"
+    ) ELSE IF /I "%%~A"=="--safe" (
+        REM Keep --safe as known flag for compatibility (no-op)
+        SET "ORCH_FLAGS=!ORCH_FLAGS! --no-wait"
+    ) ELSE (
+        REM pass unknown args through as-is
+        SET "ORCH_FLAGS=!ORCH_FLAGS! %%~A"
+    )
+)
+
+call python scripts\pipeline_orchestrator.py %ORCH_FLAGS%
 
 REM ---------------------------------------------------
 REM STEP 8: FINAL STATUS & DASHBOARDS
@@ -169,3 +185,4 @@ echo.
 pause
 endlocal
 exit /b 0
+

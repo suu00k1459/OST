@@ -1,6 +1,6 @@
 # Dockerfile.producer
 # Kafka Producer Service
-# Reads CSV files and streams to Kafka (multi-broker)
+# Reads CSV files and streams to Kafka (single-broker)
 
 FROM python:3.10-slim
 
@@ -16,34 +16,27 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy global requirements (used only as constraints)
-COPY requirements.txt .
+# Copy service-specific requirements
+COPY requirements/producer.txt requirements.txt
 
-# Install ONLY the Python deps this service needs,
-# constrained by the global requirements.txt
-RUN pip install --no-cache-dir \
-    numpy \
-    pandas \
-    kafka-python \
-    python-dotenv \
-    requests \
-    -c requirements.txt
+# Install ONLY the Python deps this service needs
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY scripts/config_loader.py ./scripts/
-COPY scripts/02_kafka_producer_multi_broker.py ./scripts/
+COPY scripts/02_kafka_producer.py ./scripts/
 
-# Copy data files
-COPY data/processed ./data/processed/
+# Data is mounted via volume in docker-compose, not copied
+# COPY data/processed ./data/processed/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV KAFKA_BOOTSTRAP_SERVERS="kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094,kafka-broker-4:29095"
+ENV KAFKA_BOOTSTRAP_SERVERS="kafka-broker-1:9092"
 ENV DATA_PATH=/app/data/processed
 
-# Health check (check connection to all brokers)
+# Health check (single-broker connection)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "from kafka import KafkaProducer; KafkaProducer(bootstrap_servers=['kafka-broker-1:29092','kafka-broker-2:29093','kafka-broker-3:29094','kafka-broker-4:29095'])" || exit 1
+    CMD python -c "from kafka import KafkaProducer; KafkaProducer(bootstrap_servers=['kafka-broker-1:9092'])" || exit 1
 
-# Run multi-broker producer (distributes 2400 devices across 4 brokers)
-CMD ["python", "scripts/02_kafka_producer_multi_broker.py", "--source", "/app/data/processed", "--rate", "10"]
+# Run single-broker producer (distributes 2400 devices to broker 1)
+CMD ["python", "scripts/02_kafka_producer.py", "--source", "/app/data/processed", "--rate", "10"]
