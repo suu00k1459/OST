@@ -4,17 +4,14 @@
   "tags": ["flead", "kpi", "analytics"],
   "timezone": "browser",
   "refresh": "30s",
-  "time": {
-    "from": "now-24h",
-    "to": "now"
-  },
+  "time": { "from": "now-24h", "to": "now" },
 
   "panels": [
     {
       "id": 101,
       "title": "Global Model Accuracy (Last 24h)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
       "targets": [
         {
           "refId": "A",
@@ -25,6 +22,8 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
+          "min": 0,
+          "max": 100,
           "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
@@ -35,14 +34,24 @@
             ]
           }
         }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "orientation": "auto"
       }
     },
 
     {
       "id": 102,
-      "title": "System Average Latency",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "title": "Average Processing Latency",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
       "targets": [
         {
           "refId": "A",
@@ -53,16 +62,35 @@
       "fieldConfig": {
         "defaults": {
           "unit": "ms",
-          "color": { "mode": "thresholds" }
+          "min": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 200 },
+              { "color": "red", "value": 500 }
+            ]
+          }
         }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "orientation": "auto"
       }
     },
 
     {
       "id": 103,
-      "title": "Total Active Devices (Last 15min)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "title": "Active Devices (Last 15 min)",
+      "type": "bargauge",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
       "targets": [
         {
           "refId": "A",
@@ -73,7 +101,24 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "thresholds" }
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 10 },
+              { "color": "green", "value": 50 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "vertical",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
         }
       }
     },
@@ -81,28 +126,45 @@
     {
       "id": 104,
       "title": "Anomalies (Last 24h)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "type": "bargauge",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
       "targets": [
         {
           "refId": "A",
           "database": "flead_db",
-          "query": "SELECT COUNT(*) FROM stream_analysis_results WHERE is_anomaly = TRUE AND timestamp > NOW() - INTERVAL '24 hours';"
+          "query": "SELECT COUNT(*) AS anomalies FROM stream_analysis_results WHERE is_anomaly = TRUE AND timestamp > NOW() - INTERVAL '24 hours';"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "thresholds" }
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 200 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "displayMode": "lcd",
+        "orientation": "vertical",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
         }
       }
     },
 
     {
       "id": 105,
-      "title": "Forecast Availability (Last 24h)",
+      "title": "Forecast Points (Last 24h)",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 4 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 6 },
       "targets": [
         {
           "refId": "A",
@@ -113,7 +175,24 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "thresholds" }
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 100 },
+              { "color": "green", "value": 1000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "graphMode": "area",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
         }
       }
     },
@@ -122,7 +201,7 @@
       "id": 106,
       "title": "Events Processed Per Minute",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 6, "y": 4 },
+      "gridPos": { "h": 8, "w": 9, "x": 6, "y": 6 },
       "targets": [
         {
           "refId": "A",
@@ -133,8 +212,17 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "custom": { "lineWidth": 2, "fillOpacity": 20 }
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 30,
+            "showPoints": "never"
+          }
         }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
       }
     },
 
@@ -142,7 +230,7 @@
       "id": 107,
       "title": "Training Jobs Per Hour",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "gridPos": { "h": 8, "w": 9, "x": 15, "y": 6 },
       "targets": [
         {
           "refId": "A",
@@ -153,16 +241,24 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "custom": { "lineWidth": 2, "fillOpacity": 20 }
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "showPoints": "never"
+          }
         }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
       }
     },
 
     {
       "id": 108,
-      "title": "Database Growth (Records)",
+      "title": "Database Growth (Archive Records)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
       "targets": [
         {
           "refId": "A",
@@ -173,8 +269,16 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "custom": { "lineWidth": 2, "fillOpacity": 20 }
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "showPoints": "auto"
+          }
         }
+      },
+      "options": {
+        "legend": { "displayMode": "hidden" },
+        "tooltip": { "mode": "single" }
       }
     }
   ]
