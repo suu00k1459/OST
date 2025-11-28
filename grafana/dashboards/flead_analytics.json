@@ -1,0 +1,411 @@
+{
+  "title": "FLEAD - Federated Learning Analytics Dashboard",
+  "description": "Real-time monitoring of IoT data, anomaly detection, federated models, and global model performance",
+  "tags": ["flead", "iot", "federated-learning", "analytics"],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "System Status",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT COUNT(*) as active_devices FROM (SELECT DISTINCT device_id FROM stream_analysis_results WHERE timestamp > NOW() - INTERVAL '5 minutes') t;",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Real-Time Anomalies",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT COUNT(*) as anomalies FROM stream_analysis_results WHERE is_anomaly = TRUE AND timestamp > NOW() - INTERVAL '1 hour';",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 5 },
+                { "color": "red", "value": 20 }
+              ]
+            }
+          },
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Global Model Accuracy",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT AVG(model_accuracy) * 100 as accuracy FROM model_evaluations WHERE evaluation_timestamp > NOW() - INTERVAL '24 hours';",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
+        }
+      },
+      "options": {
+        "orientation": "auto",
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "id": 4,
+      "title": "Processing Latency",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT metric_value as latency FROM dashboard_metrics WHERE metric_name = 'average_processing_latency' ORDER BY updated_at DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Stream Analysis - Real-Time Anomalies (Last Hour)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT timestamp, COUNT(*) as anomaly_count FROM stream_analysis_results WHERE is_anomaly = TRUE AND timestamp > NOW() - INTERVAL '1 hour' GROUP BY timestamp ORDER BY timestamp;",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 30, "lineWidth": 2 },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Batch Analysis - Daily Aggregations",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT analysis_date, AVG(avg_value) as daily_avg, AVG(max_value) as daily_max FROM batch_analysis_results WHERE analysis_date >= CURRENT_DATE - INTERVAL '7 days' GROUP BY analysis_date ORDER BY analysis_date;",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 20, "lineWidth": 2 },
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Z-Score Distribution (Stream)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT timestamp, AVG(z_score) as avg_z_score, MAX(z_score) as max_z_score FROM stream_analysis_results WHERE timestamp > NOW() - INTERVAL '6 hours' GROUP BY timestamp ORDER BY timestamp;",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 20, "lineWidth": 2 },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Model Performance Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT evaluation_timestamp, AVG(model_accuracy) * 100 as accuracy FROM model_evaluations WHERE evaluation_timestamp > NOW() - INTERVAL '7 days' GROUP BY DATE_TRUNC('hour', evaluation_timestamp) ORDER BY evaluation_timestamp;",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 20, "lineWidth": 2 },
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Anomalies by Device (Last 24H)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT device_id, COUNT(*) as anomaly_count, COUNT(*) * 100.0 / (SELECT COUNT(*) FROM stream_analysis_results WHERE timestamp > NOW() - INTERVAL '24 hours') as anomaly_percentage FROM stream_analysis_results WHERE is_anomaly = TRUE AND timestamp > NOW() - INTERVAL '24 hours' GROUP BY device_id ORDER BY anomaly_count DESC LIMIT 20;",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "fieldName": "anomaly_count",
+            "direction": -1
+          }
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "title": "Batch Analysis - Statistics",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT device_id, analysis_date, ROUND(avg_value::numeric, 2) as avg, ROUND(min_value::numeric, 2) as min, ROUND(max_value::numeric, 2) as max, ROUND(stddev_value::numeric, 2) as stddev, sample_count FROM batch_analysis_results WHERE analysis_date = CURRENT_DATE - INTERVAL '1 day' ORDER BY device_id LIMIT 50;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Model Evaluation Metrics",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 36 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT COUNT(*) as evaluations FROM model_evaluations WHERE evaluation_timestamp > NOW() - INTERVAL '24 hours';",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Correct Predictions Rate",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 36 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT COUNT(CASE WHEN is_correct = TRUE THEN 1 END) * 100.0 / COUNT(*) as accuracy FROM model_evaluations WHERE evaluation_timestamp > NOW() - INTERVAL '24 hours';",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "Global Model Version",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 36 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT model_version FROM model_evaluations ORDER BY evaluation_timestamp DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "System Health - Devices Online",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 36 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT COUNT(DISTINCT device_id) as devices_online FROM stream_analysis_results WHERE timestamp > NOW() - INTERVAL '10 minutes';",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Forecasted Values (Next & Last Hour)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT ts, forecast_value FROM device_forecast WHERE ts BETWEEN NOW() - INTERVAL '1 hour' AND NOW() + INTERVAL '1 hour' ORDER BY ts;",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "lineWidth": 2, "fillOpacity": 20 },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "title": "Forecasted Points Count (Last 24h)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT COUNT(*) AS forecast_count FROM device_forecast WHERE ts > NOW() - INTERVAL '24 hours';",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+    {
+      "id": 17,
+      "title": "Anomaly Severity Over Time (Z-score)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT timestamp, MAX(z_score) AS max_severity FROM stream_analysis_results WHERE timestamp > NOW() - INTERVAL '6 hours' GROUP BY timestamp ORDER BY timestamp;",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "lineWidth": 2, "fillOpacity": 20 },
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "title": "Anomalies Count over Time (Last 24h)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT time_bucket('5 minutes', timestamp) AS bucket, COUNT(*) AS anomaly_count FROM stream_analysis_results WHERE is_anomaly = TRUE AND timestamp > NOW() - INTERVAL '24 hours' GROUP BY bucket ORDER BY bucket;",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "lineWidth": 2, "fillOpacity": 20 },
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "title": "Archive Data (Raw Device Records)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 56 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT ts, device_id, metric_name, value, extra FROM device_raw_archive WHERE ts > NOW() - INTERVAL '24 hours' ORDER BY ts DESC LIMIT 500;",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 20,
+      "title": "Archived Records (Last 24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 64 },
+      "targets": [
+        {
+          "database": "flead_db",
+          "query": "SELECT COUNT(*) AS archived_count FROM device_raw_archive WHERE ts > NOW() - INTERVAL '24 hours';",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" }
+        }
+      }
+    }
+  ],
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  }
+}
