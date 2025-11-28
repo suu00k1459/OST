@@ -11,6 +11,11 @@ import subprocess
 import time
 from datetime import datetime, timedelta
 import json
+import socket
+
+from kafka import KafkaConsumer, TopicPartition
+import requests
+
 
 app = Flask(__name__)
 
@@ -30,62 +35,74 @@ def get_db_connection():
     except:
         return None
 
+SERVICE_ENDPOINTS = {
+    'kafka': ('kafka-broker-1', 9092),
+    'timescaledb': ('timescaledb', 5432),
+    'flink-jobmanager': ('flink-jobmanager', 8081),
+    'flink-taskmanager': ('flink-taskmanager', 8081),
+    'spark-master': ('spark-master', 7077),
+    'spark-worker': ('spark-worker-1', 8081),
+    'grafana': ('grafana', 3000),
+}
+
 def check_docker_service(service_name):
-    """Check if Docker service is running"""
-    try:
-        result = subprocess.run(
-            ['docker', 'ps', '--filter', f'name={service_name}', '--format', '{{.Status}}'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        status = result.stdout.strip()
-        if 'Up' in status:
-            if 'healthy' in status:
-                return 'healthy'
-            return 'running'
-        return 'stopped'
-    except:
+    """Check if service port is reachable instead of calling docker ps"""
+    host, port = SERVICE_ENDPOINTS.get(service_name, (None, None))
+    if not host:
         return 'unknown'
+    try:
+        with socket.create_connection((host, port), timeout=2):
+            return 'running'
+    except Exception:
+        return 'stopped'
+
 
 def get_kafka_message_count(topic):
-    """Get Kafka topic message count"""
+    """Get Kafka topic message count by reading end offsets directly"""
     try:
-        result = subprocess.run(
-            ['docker', 'exec', 'kafka', 'kafka-run-class', 
-             'kafka.tools.GetOffsetShell', '--broker-list', 'kafka:29092', 
-             '--topic', topic, '--time', '-1'],
-            capture_output=True,
-            text=True,
-            timeout=10
+        consumer = KafkaConsumer(
+            bootstrap_servers=[
+                'kafka-broker-1:29092',
+                'kafka-broker-2:29093',
+                'kafka-broker-3:29094',
+                'kafka-broker-4:29095',
+            ],
+            request_timeout_ms=5000,
+            api_version_auto_timeout_ms=5000,
         )
-        total = 0
-        for line in result.stdout.strip().split('\n'):
-            if ':' in line:
-                total += int(line.split(':')[-1])
+
+        partitions = consumer.partitions_for_topic(topic)
+        if not partitions:
+            consumer.close()
+            return 0
+
+        tps = [TopicPartition(topic, p) for p in partitions]
+        end_offsets = consumer.end_offsets(tps)
+        total = sum(end_offsets.values())
+
+        consumer.close()
         return total
-    except:
+    except Exception as e:
+        print(f"Kafka error: {e}")
         return 0
 
+
 def get_flink_jobs():
-    """Get Flink job status"""
+    """Get Flink job status via REST API"""
     try:
-        result = subprocess.run(
-            ['docker', 'exec', 'flink-jobmanager', 'flink', 'list'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
+        resp = requests.get('http://flink-jobmanager:8081/jobs/overview', timeout=5)
+        data = resp.json()
         jobs = []
-        for line in result.stdout.split('\n'):
-            if 'RUNNING' in line or 'FINISHED' in line:
-                jobs.append({
-                    'status': 'RUNNING' if 'RUNNING' in line else 'FINISHED',
-                    'name': line.split(':')[-1].strip() if ':' in line else 'Unknown'
-                })
+        for j in data.get('jobs', []):
+            jobs.append({
+                'status': j.get('state', 'UNKNOWN'),
+                'name': j.get('name', 'Unknown'),
+            })
         return jobs
-    except:
+    except Exception as e:
+        print(f"Flink error: {e}")
         return []
+
 
 def get_database_stats():
     """Get database statistics"""

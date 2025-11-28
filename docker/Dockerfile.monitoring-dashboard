@@ -24,4 +24,4 @@ EXPOSE 5001
 
 WORKDIR /app/monitoring_dashboard
 
-CMD ["python", "monitoring_dashboard.py"]
+CMD ["python", "pipeline_monitor.py"]
