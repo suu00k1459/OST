@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: 'FLEAD-Analytics'
+    orgId: 1
+    type: file
+    folder: 'FLEAD'          # هتظهر كـ Folder جوّا Grafana
+    allowUiUpdates: true
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards
+      # extensions: [ "json" ]   # ممكن تسيبها متعلّقة لو حابب
