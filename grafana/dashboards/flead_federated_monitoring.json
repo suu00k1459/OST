@@ -1,0 +1,258 @@
+{
+  "title": "FLEAD - Federated Learning Monitoring",
+  "description": "Monitoring of local and global models, training activity, and global performance.",
+  "tags": ["flead", "federated-learning", "monitoring"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total Local Models",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT COUNT(*) FROM local_models;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 100, "color": "yellow" },
+                { "value": 1000, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "values": false,
+          "fields": ""
+        }
+      }
+    },
+
+    {
+      "id": 2,
+      "title": "Global Models Created",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT COUNT(*) FROM federated_models;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "values": false,
+          "fields": ""
+        }
+      }
+    },
+
+    {
+      "id": 3,
+      "title": "Active Devices (Last Hour)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT COUNT(DISTINCT device_id) FROM local_models WHERE created_at > NOW() - INTERVAL '1 hour';"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 5, "color": "yellow" },
+                { "value": 10, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "values": false,
+          "fields": ""
+        }
+      }
+    },
+
+    {
+      "id": 4,
+      "title": "Latest Global Accuracy",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT ROUND(accuracy::numeric, 4) AS value FROM federated_models ORDER BY created_at DESC LIMIT 1;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "thresholds",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.5, "color": "yellow" },
+                { "value": 0.7, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "values": false,
+          "fields": ""
+        }
+      }
+    },
+
+    {
+      "id": 5,
+      "title": "Model Training Rate (Per Minute)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT time_bucket('1 minute', created_at) AS time, COUNT(*) AS value FROM local_models WHERE $__timeFilter(created_at) GROUP BY time ORDER BY time;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 20,
+            "showPoints": "never"
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+
+    {
+      "id": 6,
+      "title": "Global Model Accuracy Trend",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT created_at AS time, accuracy AS value FROM federated_models WHERE $__timeFilter(created_at) ORDER BY created_at;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 30,
+            "showPoints": "always",
+            "pointSize": 5
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+
+    {
+      "id": 7,
+      "title": "Top Devices by Training Count (Last Hour)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT device_id, COUNT(*) AS training_count, ROUND(AVG(accuracy)::numeric, 4) AS avg_accuracy, SUM(samples_processed) AS total_samples FROM local_models WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY device_id ORDER BY training_count DESC LIMIT 20;"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    },
+
+    {
+      "id": 8,
+      "title": "Recent Federated Models",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT global_version, aggregation_round, num_devices, ROUND(accuracy::numeric, 4) AS accuracy, created_at FROM federated_models ORDER BY created_at DESC LIMIT 15;"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    }
+  ]
+}
