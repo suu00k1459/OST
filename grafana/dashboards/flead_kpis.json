@@ -1,0 +1,181 @@
+{
+  "title": "FLEAD - KPI Overview",
+  "description": "High-level KPIs for system performance, model quality, device activity, latency, and forecasting reliability.",
+  "tags": ["flead", "kpi", "analytics"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+
+  "panels": [
+    {
+      "id": 101,
+      "title": "Global Model Accuracy (Last 24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT AVG(model_accuracy) * 100 AS accuracy FROM model_evaluations WHERE evaluation_timestamp > NOW() - INTERVAL '24 hours';"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 75 }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 102,
+      "title": "System Average Latency",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT metric_value FROM dashboard_metrics WHERE metric_name='average_processing_latency' ORDER BY updated_at DESC LIMIT 1;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 103,
+      "title": "Total Active Devices (Last 15min)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT COUNT(DISTINCT device_id) AS devices FROM stream_analysis_results WHERE timestamp > NOW() - INTERVAL '15 minutes';"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 104,
+      "title": "Anomalies (Last 24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT COUNT(*) FROM stream_analysis_results WHERE is_anomaly = TRUE AND timestamp > NOW() - INTERVAL '24 hours';"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 105,
+      "title": "Forecast Availability (Last 24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT COUNT(*) AS fc FROM device_forecast WHERE ts > NOW() - INTERVAL '24 hours';"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 106,
+      "title": "Events Processed Per Minute",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 6, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT time_bucket('1 minute', timestamp) AS bucket, COUNT(*) AS value FROM stream_analysis_results WHERE $__timeFilter(timestamp) GROUP BY bucket ORDER BY bucket;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 20 }
+        }
+      }
+    },
+
+    {
+      "id": 107,
+      "title": "Training Jobs Per Hour",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT time_bucket('1 hour', created_at) AS bucket, COUNT(*) AS jobs FROM local_models WHERE $__timeFilter(created_at) GROUP BY bucket ORDER BY bucket;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 20 }
+        }
+      }
+    },
+
+    {
+      "id": 108,
+      "title": "Database Growth (Records)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT time_bucket('1 hour', timestamp) AS bucket, COUNT(*) AS total FROM device_raw_archive WHERE $__timeFilter(timestamp) GROUP BY bucket ORDER BY bucket;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 20 }
+        }
+      }
+    }
+  ]
+}
