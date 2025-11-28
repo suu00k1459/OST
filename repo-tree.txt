@@ -1,0 +1,97 @@
+./
+README.md
+SYSTEM.md
+DOCKER_ARCHITECTURE.md
+MULTI_BROKER_SETUP.md
+docker-compose.yml
+.gitignore
+START.bat
+STOP.bat
+startup_test.log
+system.png
+project_architecture.png
+Monitor.PNG
+Device Viewer.PNG
+full project description.pdf
+grafana_dashboard.json
+grafana_dashboard_amir.json
+requirements.txt
+
+sql/
+  timescale_init.sql
+  init.sql
+  forecasting.sql
+
+scripts/
+  00_init_database.py
+  00_install_dependencies.py
+  00_model_manager.py
+  01_setup_kafka_topics.py
+  02_kafka_producer_multi_broker.py
+  03_flink_local_training.py
+  04_federated_aggregation.py
+  05_spark_analytics.py
+  06_setup_grafana.py
+  07_spark_forecasting_job.py
+  check_pipeline.py
+  config_loader.py
+  convert_chunks_to_device_csvs.py
+  forecast_logging.py
+  kafka_to_timescaledb_collector.py
+  pipeline_orchestrator.py
+  setup_grafana_datasource.py
+  README.md
+
+notebooks/
+  !!!Attention.md
+  Data PreProcessing.ipynb
+
+Papers/
+  ElMa25.pdf
+  Baseline-Federated_Anomaly_Detection_with_Isolation_Forest_for_IoT_Network_Traffics.pdf
+  13042_2022_Article_1647.pdf
+
+jars/
+  postgresql-42.7.3.jar
+
+docker/
+  Dockerfile.aggregator
+  Dockerfile.database-init
+  Dockerfile.device-viewer
+  Dockerfile.flink
+  Dockerfile.grafana-init
+  Dockerfile.monitoring-dashboard
+  Dockerfile.pipeline-orchestrator
+  Dockerfile.producer
+  Dockerfile.spark
+  Dockerfile.timescaledb-collector
+
+config/
+  settings.json
+
+monitoring_dashboard/
+  pipeline_monitor.py
+  requirements.txt
+  templates/
+    pipeline_monitor.html
+
+device-viewer/
+  app.py
+  requirements.txt
+  static/
+    style.css
+  templates/
+    base.html
+    index.html
+    device.html
+
+"Architecture Diagrams"/
+  diagram.jpg
+  diagram2.jpg
+  diagram3.jpg
+  diagram4.jpg
+  diagram5.jpg
+
+docker/ (other Dockerfiles may exist)
+
+(Note: This tree was generated from the repository file index and may omit very large or hidden files.)

@@ -424,8 +424,8 @@ class GrafanaConfigurator:
             return False
         
         # Create dashboard
-        if not self.create_dashboard():
-            return False
+        # if not self.create_dashboard():
+        #     return False
         
         logger.info("\n" + "=" * 70)
         logger.info("✓ GRAFANA SETUP COMPLETE")

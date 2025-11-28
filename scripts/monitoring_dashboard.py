@@ -19,7 +19,7 @@ app = Flask(__name__)
 
 # Configuration
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'timescaledb'),
+    'host': os.getenv('DB_HOST', 'localhost'),
     'port': int(os.getenv('DB_PORT', 5432)),
     'database': os.getenv('DB_NAME', 'flead'),
     'user': os.getenv('DB_USER', 'flead'),

@@ -20,7 +20,7 @@ GRAFANA_USER = "admin"
 GRAFANA_PASSWORD = "admin"
 
 # Database connection details (must match TimescaleDB settings)
-DB_HOST = "timescaledb"
+DB_HOST = "localhost"
 DB_PORT = 5432
 DB_NAME = "flead"
 DB_USER = "flead"
