@@ -1,0 +1,255 @@
+{
+  "title": "FLEAD - Devices & Anomalies - Yussuf",
+  "description": "Device activity, metrics and anomaly monitoring per device.",
+  "tags": ["flead", "devices", "anomaly"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+
+  "panels": [
+    {
+      "id": 201,
+      "title": "Devices Online (Last 10 min)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT COUNT(DISTINCT device_id) AS devices_online FROM stream_analysis_results WHERE timestamp > NOW() - INTERVAL '10 minutes';"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 5, "color": "yellow" },
+                { "value": 10, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      }
+    },
+
+    {
+      "id": 202,
+      "title": "Devices with Anomalies (Last 1h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT COUNT(DISTINCT device_id) AS anomaly_devices FROM stream_analysis_results WHERE is_anomaly = TRUE AND timestamp > NOW() - INTERVAL '1 hour';"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 3, "color": "yellow" },
+                { "value": 8, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+
+    {
+      "id": 203,
+      "title": "Total Anomalies (Last 24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT COUNT(*) AS anomalies FROM stream_analysis_results WHERE is_anomaly = TRUE AND timestamp > NOW() - INTERVAL '24 hours';"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 100, "color": "yellow" },
+                { "value": 300, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+
+    {
+      "id": 204,
+      "title": "Anomaly Rate per Device (Last 24h)",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT device_id, COUNT(*)::numeric AS anomaly_count FROM stream_analysis_results WHERE is_anomaly = TRUE AND timestamp > NOW() - INTERVAL '24 hours' GROUP BY device_id ORDER BY anomaly_count DESC LIMIT 10;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "continuous-GrYlRd" }
+        }
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+
+    {
+      "id": 205,
+      "title": "Device Activity Over Time (Events per Minute)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT time_bucket('1 minute', timestamp) AS bucket, COUNT(*) AS events FROM stream_analysis_results WHERE $__timeFilter(timestamp) GROUP BY bucket ORDER BY bucket;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 25,
+            "showPoints": "never"
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+
+    {
+      "id": 206,
+      "title": "Per-Device Anomaly Timeline (Last 6h)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT timestamp AS time, device_id::text AS metric, CASE WHEN is_anomaly THEN 1 ELSE 0 END AS value FROM stream_analysis_results WHERE $__timeFilter(timestamp) AND timestamp > NOW() - INTERVAL '6 hours' ORDER BY time;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "stairs",
+            "fillOpacity": 40,
+            "showPoints": "never"
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "right" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+
+    {
+      "id": 207,
+      "title": "Latest Device Metrics (Archive Snapshot)",
+      "type": "table",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT ts, device_id, metric_name, value, extra FROM device_raw_archive WHERE $__timeFilter(ts) ORDER BY ts DESC LIMIT 200;"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    },
+
+    {
+      "id": 208,
+      "title": "Top Devices by Events (Last 24h)",
+      "type": "barchart",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "database": "flead_db",
+          "query": "SELECT device_id, COUNT(*) AS events FROM stream_analysis_results WHERE $__timeFilter(timestamp) GROUP BY device_id ORDER BY events DESC LIMIT 10;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "legend": { "displayMode": "hidden" },
+        "tooltip": { "mode": "single" }
+      }
+    }
+
+  ]
+}
