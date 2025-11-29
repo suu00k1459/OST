@@ -39,7 +39,7 @@ DB_NAME = "flead"
 DB_USER = "flead"
 DB_PASSWORD = "password"
 
-INTERVAL_SECONDS = 30  # how often to write a new metrics row
+INTERVAL_SECONDS = 15  # how often to write a new metrics row (optimized from 30s)
 
 
 class DashboardMetricsUpdater:
@@ -78,25 +78,28 @@ class DashboardMetricsUpdater:
     def ensure_table(self) -> bool:
         """
         Create dashboard_metrics table if it doesn't exist.
-
-        Only requirements from pipeline_monitor:
-          - table name: dashboard_metrics
-          - column: updated_at TIMESTAMPTZ
+        Matches schema from 00_init_database.py
         """
         try:
             cur = self.conn.cursor()
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS dashboard_metrics (
-                    id                      SERIAL PRIMARY KEY,
-                    updated_at              TIMESTAMPTZ NOT NULL,
-                    total_iot               BIGINT NOT NULL,
-                    total_local_models      BIGINT NOT NULL,
-                    total_federated_models  BIGINT NOT NULL
+                    id           BIGSERIAL,
+                    metric_name  TEXT            NOT NULL,
+                    metric_value DOUBLE PRECISION NOT NULL,
+                    metric_unit  TEXT            NOT NULL,
+                    device_id    TEXT,
+                    timestamp    TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+                    updated_at   TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+                    CONSTRAINT dashboard_metrics_unique_name_ts
+                        UNIQUE (metric_name, timestamp)
                 );
 
-                CREATE INDEX IF NOT EXISTS idx_dashboard_metrics_updated_at
-                    ON dashboard_metrics(updated_at);
+                SELECT create_hypertable('dashboard_metrics', 'timestamp', if_not_exists => TRUE);
+
+                CREATE INDEX IF NOT EXISTS idx_dashboard_metrics_name
+                    ON dashboard_metrics (metric_name, timestamp);
                 """
             )
             self.conn.commit()
@@ -104,12 +107,14 @@ class DashboardMetricsUpdater:
             logger.info("✓ dashboard_metrics table ready")
             return True
         except Exception as e:
-            logger.error("✗ Failed to ensure dashboard_metrics table: %s", e)
+            # It might fail if hypertable already exists or other race conditions, 
+            # but usually safe to ignore if table exists.
+            logger.warning("⚠ ensure_table warning (might be safe if table exists): %s", e)
             self.conn.rollback()
-            return False
+            return True  # Assume it exists
 
     def compute_kpis(self):
-        """Return (total_iot, total_local, total_federated)."""
+        """Return (total_iot, total_local, total_federated, total_anomalies)."""
         try:
             cur = self.conn.cursor()
 
@@ -134,33 +139,53 @@ class DashboardMetricsUpdater:
             except Exception:
                 total_fed = 0
 
+            # anomalies count
+            try:
+                cur.execute("SELECT COUNT(*) FROM anomalies;")
+                total_anomalies = cur.fetchone()[0]
+            except Exception:
+                total_anomalies = 0
+
             cur.close()
-            return total_iot, total_local, total_fed
+            return total_iot, total_local, total_fed, total_anomalies
 
         except Exception as e:
             logger.error("✗ Failed to compute KPIs: %s", e)
-            return 0, 0, 0
+            return 0, 0, 0, 0
 
-    def insert_metrics_row(self, total_iot, total_local, total_fed):
-        """Insert a single row into dashboard_metrics."""
+    def insert_metrics_row(self, total_iot, total_local, total_fed, total_anomalies):
+        """Insert rows into dashboard_metrics (one per KPI)."""
         try:
             cur = self.conn.cursor()
             now = datetime.utcnow()
-            cur.execute(
-                """
-                INSERT INTO dashboard_metrics
-                    (updated_at, total_iot, total_local_models, total_federated_models)
-                VALUES (%s, %s, %s, %s);
-                """,
-                (now, total_iot, total_local, total_fed),
-            )
+            
+            # We insert 4 rows, one for each metric
+            metrics = [
+                ("total_iot_count", float(total_iot), "count"),
+                ("total_local_models_count", float(total_local), "count"),
+                ("total_federated_models_count", float(total_fed), "count"),
+                ("total_anomalies_count", float(total_anomalies), "count"),
+            ]
+
+            for name, val, unit in metrics:
+                cur.execute(
+                    """
+                    INSERT INTO dashboard_metrics
+                        (metric_name, metric_value, metric_unit, timestamp, updated_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (metric_name, timestamp) DO NOTHING;
+                    """,
+                    (name, val, unit, now, now),
+                )
+
             self.conn.commit()
             cur.close()
             logger.info(
-                "✓ Inserted dashboard_metrics row: iot=%d, local=%d, fed=%d",
+                "✓ Inserted dashboard_metrics rows: iot=%d, local=%d, fed=%d, anomalies=%d",
                 total_iot,
                 total_local,
                 total_fed,
+                total_anomalies,
             )
         except Exception as e:
             logger.error("✗ Failed to insert dashboard_metrics row: %s", e)
@@ -179,8 +204,8 @@ class DashboardMetricsUpdater:
 
         try:
             while True:
-                total_iot, total_local, total_fed = self.compute_kpis()
-                self.insert_metrics_row(total_iot, total_local, total_fed)
+                total_iot, total_local, total_fed, total_anomalies = self.compute_kpis()
+                self.insert_metrics_row(total_iot, total_local, total_fed, total_anomalies)
                 time.sleep(INTERVAL_SECONDS)
         except KeyboardInterrupt:
             logger.info("Stopping dashboard_metrics updater (Ctrl+C)")

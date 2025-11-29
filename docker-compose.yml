@@ -176,6 +176,11 @@ services:
       JOB_MANAGER_MEMORY_PROCESS_SIZE: 1024m
       KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092"
       LOCAL_MODEL_DIR: "/opt/flink/models/local"
+      FLINK_PROPERTIES: |
+        akka.ask.timeout: 60s
+        akka.tcp.timeout: 60s
+        akka.startup-timeout: 60s
+        web.timeout: 60000
     ports:
       - "6123:6123"
       - "8161:8081"       # Flink dashboard
@@ -200,6 +205,15 @@ services:
       JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
       KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092"
       LOCAL_MODEL_DIR: "/opt/flink/models/local"
+      FLINK_PARALLELISM: "2"
+      FLINK_PROPERTIES: |
+        taskmanager.numberOfTaskSlots: 2
+        parallelism.default: 2
+        taskmanager.memory.process.size: 1024m
+        akka.ask.timeout: 60s
+        akka.tcp.timeout: 60s
+        akka.startup-timeout: 60s
+        web.timeout: 60000
     volumes:
       - ./flink-jars:/opt/flink/usrlib
     depends_on:
@@ -336,6 +350,8 @@ services:
       dockerfile: docker/Dockerfile.aggregator
     container_name: spark-analytics
     command: ["python", "scripts/dashboard_metrics_updater.py"]
+    volumes:
+      - ./scripts:/app/scripts:ro
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -411,6 +427,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/flead_home.json
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
@@ -435,6 +452,9 @@ services:
       DB_NAME: flead
       DB_USER: flead
       DB_PASSWORD: password
+    volumes:
+      - ./grafana/dashboards:/app/dashboards:ro
+      - ./scripts/06_setup_grafana.py:/app/scripts/06_setup_grafana.py:ro
     depends_on:
       grafana:
         condition: service_started

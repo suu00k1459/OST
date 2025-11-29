@@ -63,10 +63,6 @@ TOPICS: Dict[str, Dict[str, Any]] = {
         "partitions": 4,
         "replication_factor": 1,
     },
-    "analytics-results": {
-        "partitions": 4,
-        "replication_factor": 1,
-    },
 }
 
 MAX_ATTEMPTS = 120

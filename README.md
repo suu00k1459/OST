@@ -361,7 +361,7 @@ All Kafka consumers (Flink, Spark, Aggregator) connect to the single broker via 
 ### Component Pipeline
 
 --   **Kafka Producer**: Streams 10 messages/second from randomly selected devices to the single broker.
--   **Local Training (Flink)**: Each device trains using Z-score anomaly detection on data from its assigned broker.
+-   **Local Training (Flink)**: Each device trains using Random Cut Forest (RCF) anomaly detection on its data stream.
 -   **Federated Aggregation**: Aggregates local models using FedAvg algorithm after receiving 20 device updates.
 -   **Spark Analytics**: Processes data from all brokers and stores results in TimescaleDB. Grafana displays real-time dashboards with a 30-second refresh.
 
@@ -378,20 +378,20 @@ Kafka producer streams 10 messages/second from randomly selected devices across 
 
 ### 2. Local Training (Flink)
 
-Each device trains using Z-score anomaly detection on its broker-specific data stream:
+Each device trains using **Random Cut Forest (RCF)** anomaly detection on its data stream:
 
--   Maintains rolling window of 100 data points per device
--   Calculates mean (μ) and standard deviation (σ)
--   Detects anomaly if |Z-score| > 2.5
--   Trains local model every 50 rows OR 60 seconds per device
+-   Maintains an ensemble of 50 random cut trees per device
+-   Each tree holds up to 256 samples with temporal shingle size of 4
+-   Anomaly score range: 0.0 (normal) to 1.0 (highly anomalous)
+-   Detects anomaly if score > 0.4 (configurable threshold)
+-   Trains local SGD model every 50 rows OR 60 seconds per device
 
 **Training trigger:** Every 50 rows OR every 60 seconds per device
 
-**Z-score formula:**
-
-```
-Z = |X - μ| / σ
-```
+**RCF Anomaly Detection:**
+- Streaming-friendly unsupervised algorithm
+- No pre-defined thresholds based on distribution assumptions
+- Automatically adapts to data patterns
 
 ### 3. Federated Aggregation
 

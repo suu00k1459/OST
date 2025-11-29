@@ -8,6 +8,7 @@ Kafka → Flink → Federated Aggregation → TimescaleDB → Grafana
 from flask import Flask, render_template, jsonify
 import psycopg2
 import subprocess
+import shutil
 from datetime import datetime
 import json
 import os
@@ -21,6 +22,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
+logging.getLogger("kafka").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------
@@ -398,6 +400,10 @@ def get_python_processes_host():
     PowerShell won't be available.
     """
     try:
+        # Check if powershell is available before trying to run it
+        if shutil.which("powershell") is None:
+            return []
+
         result = subprocess.run(
             [
                 "powershell",

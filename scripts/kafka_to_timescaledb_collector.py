@@ -181,15 +181,16 @@ class KafkaToTimescaleDB:
                 """
             )
 
-            # 2. anomalies table
+            # 2. anomalies table (RCF-based detection)
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS anomalies (
-                    ts        TIMESTAMPTZ NOT NULL,
-                    device_id TEXT        NOT NULL,
-                    value     DOUBLE PRECISION,
-                    z_score   DOUBLE PRECISION,
-                    severity  TEXT
+                    ts              TIMESTAMPTZ NOT NULL,
+                    device_id       TEXT        NOT NULL,
+                    value           DOUBLE PRECISION,
+                    anomaly_score   DOUBLE PRECISION,
+                    severity        TEXT,
+                    detection_method TEXT DEFAULT 'random_cut_forest'
                 );
                 SELECT create_hypertable('anomalies', 'ts', if_not_exists => TRUE);
                 CREATE INDEX IF NOT EXISTS idx_anomalies_device_ts ON anomalies (device_id, ts);
@@ -217,13 +218,15 @@ class KafkaToTimescaleDB:
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS dashboard_metrics (
-                    id BIGSERIAL PRIMARY KEY,
-                    updated_at           TIMESTAMPTZ NOT NULL,
-                    total_messages       BIGINT,
-                    messages_last_minute BIGINT,
-                    messages_last_5min   BIGINT
+                    id           BIGSERIAL,
+                    metric_name  TEXT            NOT NULL,
+                    metric_value DOUBLE PRECISION NOT NULL,
+                    metric_unit  TEXT            NOT NULL,
+                    device_id    TEXT,
+                    timestamp    TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+                    updated_at   TIMESTAMPTZ     NOT NULL DEFAULT NOW()
                 );
-                SELECT create_hypertable('dashboard_metrics', 'updated_at', if_not_exists => TRUE);
+                SELECT create_hypertable('dashboard_metrics', 'timestamp', if_not_exists => TRUE);
                 """
             )
 
@@ -271,17 +274,19 @@ class KafkaToTimescaleDB:
             )
             last_5min = cur.fetchone()[0] or 0
 
-            cur.execute(
+            # Insert metrics using the new schema
+            metrics = [
+                ("total_messages", total_messages, "count"),
+                ("messages_last_minute", last_minute, "count"),
+                ("messages_last_5min", last_5min, "count")
+            ]
+
+            cur.executemany(
                 """
-                INSERT INTO dashboard_metrics (
-                    updated_at,
-                    total_messages,
-                    messages_last_minute,
-                    messages_last_5min
-                )
+                INSERT INTO dashboard_metrics (timestamp, metric_name, metric_value, metric_unit)
                 VALUES (NOW(), %s, %s, %s);
                 """,
-                (total_messages, last_minute, last_5min),
+                [(m[0], m[1], m[2]) for m in metrics]
             )
 
             logger.debug(
@@ -325,20 +330,22 @@ class KafkaToTimescaleDB:
                 self.total_inserts += len(self.iot_batch)
                 self.iot_batch = []
 
-            # 2. Insert Anomalies
+            # 2. Insert Anomalies (RCF-based detection)
             if self.anomaly_batch:
                 anom_tuples = []
                 for msg in self.anomaly_batch:
                     ts = self._parse_ts(msg.get("timestamp"))
                     device_id = msg.get("device_id", "unknown")
                     value = float(msg.get("value", 0.0))
-                    z_score = float(msg.get("z_score", 0.0))
+                    # Support both old z_score and new anomaly_score field
+                    anomaly_score = float(msg.get("anomaly_score", msg.get("z_score", 0.0)))
                     severity = msg.get("severity", "info")
-                    anom_tuples.append((ts, device_id, value, z_score, severity))
+                    detection_method = msg.get("detection_method", "random_cut_forest")
+                    anom_tuples.append((ts, device_id, value, anomaly_score, severity, detection_method))
 
                 execute_values(
                     cur,
-                    "INSERT INTO anomalies (ts, device_id, value, z_score, severity) VALUES %s",
+                    "INSERT INTO anomalies (ts, device_id, value, anomaly_score, severity, detection_method) VALUES %s",
                     anom_tuples,
                 )
                 self.anomaly_batch = []

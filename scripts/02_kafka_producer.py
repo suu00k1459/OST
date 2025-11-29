@@ -243,6 +243,9 @@ class SingleBrokerProducer:
                 stream = self.stream_from_broker_devices(broker_devices)
                 
                 for record, device_id, broker_idx in stream:
+                    # Inject device_id into the record
+                    record["device_id"] = device_id
+
                     # Send to Kafka
                     # We don't specify partition, let the partitioner decide (or round-robin)
                     self.producer.send(

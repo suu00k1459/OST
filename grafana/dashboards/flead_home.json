@@ -1,0 +1,363 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "FLEAD System Home - Navigate to specialized dashboards",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"text-align: center; padding: 20px;\">\n  <h1 style=\"color: #00D4FF; font-size: 48px; margin-bottom: 10px;\">🧠 FLEAD</h1>\n  <h2 style=\"color: #4ECDC4; font-size: 24px; font-weight: normal;\">Federated Learning for Edge Anomaly Detection</h2>\n  <p style=\"color: #888; font-size: 14px; margin-top: 20px;\">Real-time IoT monitoring • Distributed ML • Anomaly Detection</p>\n</div>"
+      }
+    },
+    {
+      "id": 100,
+      "type": "row",
+      "title": "📊 Quick Stats",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "📡 Active Devices",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT now() AS time, COUNT(DISTINCT device_id) AS value FROM iot_data;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#00D4FF", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "📊 Total Messages",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT now() AS time, COUNT(*) AS value FROM iot_data;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#4ECDC4", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "⚠️ Anomalies",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT now() AS time, COUNT(*) AS value FROM anomalies;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#2ECC40", "value": null },
+              { "color": "#FF851B", "value": 100 },
+              { "color": "#FF4136", "value": 500 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 5,
+      "type": "gauge",
+      "title": "🎯 Model Accuracy",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT created_at AS time, COALESCE(accuracy * 100, 0) AS value FROM federated_models ORDER BY created_at DESC LIMIT 1;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#FF4136", "value": null },
+              { "color": "#FF851B", "value": 70 },
+              { "color": "#2ECC40", "value": 85 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "🧠 Local Models",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT now() AS time, COUNT(*) AS value FROM local_models;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#9D70F9", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "🔄 FL Rounds",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT COALESCE(MAX(created_at), now()) AS time, COALESCE(MAX(global_version), 0) AS value FROM federated_models;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#FFE66D", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "🚀 Dashboards",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 },
+      "collapsed": false
+    },
+    {
+      "id": 10,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 12 },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 10px; padding: 20px; height: 100%; border: 1px solid #00D4FF;\">\n  <h3 style=\"color: #00D4FF; margin-bottom: 10px;\">📊 Executive Overview</h3>\n  <p style=\"color: #aaa; font-size: 13px;\">High-level system health, KPIs, and real-time activity at a glance</p>\n  <ul style=\"color: #888; font-size: 12px; margin-top: 10px;\">\n    <li>System Health Score</li>\n    <li>Active Devices & Throughput</li>\n    <li>Anomaly & FL Status</li>\n  </ul>\n  <a href=\"/d/flead-executive\" style=\"display: inline-block; margin-top: 15px; padding: 8px 16px; background: #00D4FF; color: #000; border-radius: 5px; text-decoration: none; font-weight: bold;\">Open Dashboard →</a>\n</div>"
+      }
+    },
+    {
+      "id": 11,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 12 },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"background: linear-gradient(135deg, #1a1a2e 0%, #2d132c 100%); border-radius: 10px; padding: 20px; height: 100%; border: 1px solid #FF6B6B;\">\n  <h3 style=\"color: #FF6B6B; margin-bottom: 10px;\">🚨 Anomaly Detection</h3>\n  <p style=\"color: #aaa; font-size: 13px;\">Deep dive into RCF anomaly scores, severity breakdown, and device analysis</p>\n  <ul style=\"color: #888; font-size: 12px; margin-top: 10px;\">\n    <li>Score Distribution & Timeline</li>\n    <li>Severity Breakdown</li>\n    <li>Hot Spot Analysis</li>\n  </ul>\n  <a href=\"/d/flead-anomaly\" style=\"display: inline-block; margin-top: 15px; padding: 8px 16px; background: #FF6B6B; color: #000; border-radius: 5px; text-decoration: none; font-weight: bold;\">Open Dashboard →</a>\n</div>"
+      }
+    },
+    {
+      "id": 12,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 12 },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"background: linear-gradient(135deg, #1a1a2e 0%, #0d1f2d 100%); border-radius: 10px; padding: 20px; height: 100%; border: 1px solid #9D70F9;\">\n  <h3 style=\"color: #9D70F9; margin-bottom: 10px;\">🧠 Federated Learning</h3>\n  <p style=\"color: #aaa; font-size: 13px;\">Track global model evolution, local training, and aggregation rounds</p>\n  <ul style=\"color: #888; font-size: 12px; margin-top: 10px;\">\n    <li>Global Model Accuracy</li>\n    <li>Local Model Distribution</li>\n    <li>Training History</li>\n  </ul>\n  <a href=\"/d/flead-fl-lab\" style=\"display: inline-block; margin-top: 15px; padding: 8px 16px; background: #9D70F9; color: #000; border-radius: 5px; text-decoration: none; font-weight: bold;\">Open Dashboard →</a>\n</div>"
+      }
+    },
+    {
+      "id": 13,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 18 },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"background: linear-gradient(135deg, #1a1a2e 0%, #1a3c34 100%); border-radius: 10px; padding: 20px; height: 100%; border: 1px solid #4ECDC4;\">\n  <h3 style=\"color: #4ECDC4; margin-bottom: 10px;\">📱 Device Explorer</h3>\n  <p style=\"color: #aaa; font-size: 13px;\">Individual device analysis, sensor patterns, and fleet health status</p>\n  <ul style=\"color: #888; font-size: 12px; margin-top: 10px;\">\n    <li>Device-specific Metrics</li>\n    <li>Sensor Value Trends</li>\n    <li>Fleet Status Table</li>\n  </ul>\n  <a href=\"/d/flead-device\" style=\"display: inline-block; margin-top: 15px; padding: 8px 16px; background: #4ECDC4; color: #000; border-radius: 5px; text-decoration: none; font-weight: bold;\">Open Dashboard →</a>\n</div>"
+      }
+    },
+    {
+      "id": 14,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 18 },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"background: linear-gradient(135deg, #1a1a2e 0%, #2d2d0d 100%); border-radius: 10px; padding: 20px; height: 100%; border: 1px solid #FFE66D;\">\n  <h3 style=\"color: #FFE66D; margin-bottom: 10px;\">⚡ Operations Center</h3>\n  <p style=\"color: #aaa; font-size: 13px;\">Real-time pipeline monitoring, throughput, and system health</p>\n  <ul style=\"color: #888; font-size: 12px; margin-top: 10px;\">\n    <li>Message Rate & Latency</li>\n    <li>Pipeline Health</li>\n    <li>Live Data Feeds</li>\n  </ul>\n  <a href=\"/d/flead-ops\" style=\"display: inline-block; margin-top: 15px; padding: 8px 16px; background: #FFE66D; color: #000; border-radius: 5px; text-decoration: none; font-weight: bold;\">Open Dashboard →</a>\n</div>"
+      }
+    },
+    {
+      "id": 15,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 18 },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"background: linear-gradient(135deg, #1a1a2e 0%, #2d1a2d 100%); border-radius: 10px; padding: 20px; height: 100%; border: 1px solid #FF85A2;\">\n  <h3 style=\"color: #FF85A2; margin-bottom: 10px;\">📍 Anomaly Tracker</h3>\n  <p style=\"color: #aaa; font-size: 13px;\">Track anomalies by time periods and devices with heatmaps</p>\n  <ul style=\"color: #888; font-size: 12px; margin-top: 10px;\">\n    <li>Time-based Tracking</li>\n    <li>Device-specific Analysis</li>\n    <li>Hourly/Daily Patterns</li>\n  </ul>\n  <a href=\"/d/flead-anomaly-tracker\" style=\"display: inline-block; margin-top: 15px; padding: 8px 16px; background: #FF85A2; color: #000; border-radius: 5px; text-decoration: none; font-weight: bold;\">Open Dashboard →</a>\n</div>"
+      }
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "📈 Live Activity",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "collapsed": false
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "📊 System Activity",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 25 },
+      "targets": [
+        {
+          "refId": "Anomalies",
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('1 minute', ts) AS time, COUNT(*) AS \"Anomalies\" FROM anomalies WHERE $__timeFilter(ts) GROUP BY 1 ORDER BY 1;"
+        },
+        {
+          "refId": "Models",
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('1 minute', created_at) AS time, COUNT(*) * 10 AS \"Models (x10)\" FROM local_models WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 25,
+            "gradientMode": "opacity"
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "IoT Messages" }, "properties": [{ "id": "color", "value": { "fixedColor": "#00D4FF", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Anomalies (x5)" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF6B6B", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 21,
+      "type": "piechart",
+      "title": "🔥 Anomaly Severity",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 25 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COALESCE(severity, 'UNKNOWN') AS severity, COUNT(*) AS count FROM anomalies WHERE ts > now() - interval '24 hours' GROUP BY severity ORDER BY count DESC;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "HIGH" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF4136", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "MEDIUM" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF851B", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "LOW" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FFDC00", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": true },
+        "pieType": "donut",
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "values": ["percent"] }
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["flead", "home"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "FLEAD - Home",
+  "uid": "flead-home",
+  "version": 1,
+  "weekStart": ""
+}
+

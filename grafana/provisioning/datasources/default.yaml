@@ -1,0 +1,20 @@
+apiVersion: 1
+
+datasources:
+  - name: FLEAD-TimescaleDB
+    type: postgres
+    access: proxy
+    url: timescaledb:5432
+    database: flead
+    user: flead
+    secureJsonData:
+      password: password
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 10
+      maxIdleConns: 5
+      connMaxLifetime: 14400
+      postgresVersion: 1400
+      timescaledb: true
+    isDefault: true
+    editable: true

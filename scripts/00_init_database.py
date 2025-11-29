@@ -64,12 +64,14 @@ logger.info(
 CREATE_TABLES_SQL = """
 -- Clean start (optional – you can comment these out if you don't want drops)
 DROP TABLE IF EXISTS iot_data CASCADE;
+DROP TABLE IF EXISTS anomalies CASCADE;
 DROP TABLE IF EXISTS local_models CASCADE;
 DROP TABLE IF EXISTS federated_models CASCADE;
 DROP TABLE IF EXISTS dashboard_metrics CASCADE;
 DROP TABLE IF EXISTS batch_analysis_results CASCADE;
 DROP TABLE IF EXISTS stream_analysis_results CASCADE;
 DROP TABLE IF EXISTS model_evaluations CASCADE;
+DROP TABLE IF EXISTS local_model_updates CASCADE;
 
 -- ------------------------------------------------------------------
 -- RAW IOT DATA
@@ -84,6 +86,39 @@ CREATE TABLE IF NOT EXISTS iot_data (
 SELECT create_hypertable('iot_data', 'ts', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_iot_data_device_ts
     ON iot_data (device_id, ts DESC);
+
+-- ------------------------------------------------------------------
+-- ANOMALIES (RCF-based detection from Flink)
+-- ------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS anomalies (
+    ts               TIMESTAMPTZ NOT NULL,
+    device_id        TEXT        NOT NULL,
+    value            DOUBLE PRECISION,
+    anomaly_score    DOUBLE PRECISION,      -- RCF score (0-1 scale)
+    severity         TEXT,                   -- info, warning, critical
+    detection_method TEXT DEFAULT 'random_cut_forest'
+);
+
+SELECT create_hypertable('anomalies', 'ts', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS idx_anomalies_device_ts
+    ON anomalies (device_id, ts DESC);
+
+-- ------------------------------------------------------------------
+-- LOCAL MODEL UPDATES (raw Kafka events from Flink training)
+-- ------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS local_model_updates (
+    ts            TIMESTAMPTZ NOT NULL,
+    device_id     TEXT        NOT NULL,
+    model_version INT,
+    accuracy      DOUBLE PRECISION,
+    loss          DOUBLE PRECISION,
+    mean          DOUBLE PRECISION,
+    std           DOUBLE PRECISION
+);
+
+SELECT create_hypertable('local_model_updates', 'ts', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS idx_local_model_updates_device_ts
+    ON local_model_updates (device_id, ts DESC);
 
 -- ------------------------------------------------------------------
 -- FEDERATED LEARNING TABLES
@@ -172,9 +207,10 @@ CREATE TABLE IF NOT EXISTS stream_analysis_results (
     raw_value          DOUBLE PRECISION,
     moving_avg_30s     DOUBLE PRECISION,
     moving_avg_5m      DOUBLE PRECISION,
-    z_score            DOUBLE PRECISION,
+    anomaly_score      DOUBLE PRECISION,       -- RCF anomaly score (0-1)
     is_anomaly         BOOLEAN         NOT NULL DEFAULT FALSE,
     anomaly_confidence DOUBLE PRECISION,
+    detection_method   TEXT            DEFAULT 'random_cut_forest',
     timestamp          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 

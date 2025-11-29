@@ -84,7 +84,7 @@ for d in [MODELS_DIR, LOCAL_MODELS_DIR, GLOBAL_MODELS_DIR]:
 # ---------------------------------------------------------------------
 # AGGREGATION SETTINGS
 # ---------------------------------------------------------------------
-AGGREGATION_WINDOW = 20          # Aggregate every 20 local model updates
+AGGREGATION_WINDOW = 15          # Aggregate every 15 local model updates (optimized from 20)
 MIN_DEVICES_FOR_AGGREGATION = 2  # Minimum devices needed
 FEDAVG_LEARNING_RATE = 0.1       # (placeholder, not used for numeric weights here)
 
@@ -192,23 +192,11 @@ class FederatedAggregator:
                     """
                 )
 
-                # Try to make them hypertables (no-op if already done)
-                try:
-                    cursor.execute(
-                        "SELECT create_hypertable('federated_models', 'created_at', if_not_exists => TRUE)"
-                    )
-                except Exception:
-                    pass
-
-                try:
-                    cursor.execute(
-                        "SELECT create_hypertable('local_models', 'created_at', if_not_exists => TRUE)"
-                    )
-                except Exception:
-                    pass
-
+                # Tables are created by database-init service.
+                # We do not attempt to convert to hypertable here to avoid deadlocks.
+                
                 self.db_connection.commit()
-                logger.info("✓ Database tables ready (or already existed)")
+                logger.info("✓ Database tables check complete")
 
         except Exception as e:
             logger.error(f"✗ Database connection error: {e}")

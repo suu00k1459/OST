@@ -32,6 +32,8 @@ from pyspark.sql.functions import (
     to_date,
     window as spark_window,
     from_json,
+    least,
+    abs,
 )
 from pyspark.sql.types import (
     StructType,
@@ -90,7 +92,9 @@ SPARK_PARALLELISM = 4
 
 # Analysis
 BATCH_WINDOW_HOURS = 24
-ANOMALY_THRESHOLD_STD = 2.5
+# Note: Spark uses statistical anomaly detection (stddev-based)
+# This is complementary to Flink's RCF-based detection
+ANOMALY_THRESHOLD_STD = 2.5  # Stddev threshold for Spark stream analysis
 
 # Global model location – shared with federated aggregator
 MODEL_DIR = Path("/app/models/global")
@@ -275,7 +279,7 @@ class TimescaleDBManager:
         """
         Insert stream analysis results into stream_analysis_results table
         (device_id, metric_name, raw_value, moving_avg_30s, moving_avg_5m,
-        z_score, is_anomaly, anomaly_confidence, timestamp).
+        anomaly_score, is_anomaly, anomaly_confidence, detection_method, timestamp).
         """
         if not results or not self.conn:
             return
@@ -291,9 +295,10 @@ class TimescaleDBManager:
                         r.get("raw_value"),
                         r.get("moving_avg_30s"),
                         r.get("moving_avg_5m"),
-                        r.get("z_score"),
+                        r.get("anomaly_score"),
                         bool(r.get("is_anomaly")) if r.get("is_anomaly") is not None else False,
                         r.get("anomaly_confidence"),
+                        r.get("detection_method", "spark_stddev"),
                         r.get("window_end") or r.get("window_start") or now_ts,
                     )
                 )
@@ -306,9 +311,10 @@ class TimescaleDBManager:
                         raw_value,
                         moving_avg_30s,
                         moving_avg_5m,
-                        z_score,
+                        anomaly_score,
                         is_anomaly,
                         anomaly_confidence,
+                        detection_method,
                         timestamp
                     ) VALUES %s
                 """
@@ -357,34 +363,24 @@ class TimescaleDBManager:
         self,
         metric_name: str,
         value: float,
+        unit: str = "count",
     ) -> None:
         """
         Insert a dashboard metric row.
-        Compatible with existing schema (metric_name, metric_value [, metric_type?]).
-        If metric_type column exists, we insert 'gauge'; otherwise we insert two columns.
+        Compatible with existing schema (metric_name, metric_value, metric_unit).
         """
         if not self.conn:
             return
 
         try:
             with self.conn.cursor() as cur:
-                # Try three-column insert; fall back to two columns if metric_type is absent.
-                try:
-                    cur.execute(
-                        """
-                        INSERT INTO dashboard_metrics (metric_name, metric_value, metric_type)
-                        VALUES (%s, %s, %s)
-                        """,
-                        (metric_name, value, "gauge"),
-                    )
-                except Exception:
-                    cur.execute(
-                        """
-                        INSERT INTO dashboard_metrics (metric_name, metric_value)
-                        VALUES (%s, %s)
-                        """,
-                        (metric_name, value),
-                    )
+                cur.execute(
+                    """
+                    INSERT INTO dashboard_metrics (metric_name, metric_value, metric_unit)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (metric_name, value, unit),
+                )
                 self.conn.commit()
         except Exception as e:
             logger.error(f"Error updating metric {metric_name}: {e}", exc_info=True)
@@ -431,6 +427,7 @@ class SparkAnalyticsEngine:
         csv_path = "/opt/spark/data/processed/*.csv"
 
         try:
+            # Enable inferSchema to avoid manual schema definition
             df = (
                 self.spark.read.option("header", "true")
                 .option("inferSchema", "true")
@@ -449,6 +446,10 @@ class SparkAnalyticsEngine:
                     ", ".join(sorted(missing)),
                 )
                 return
+
+            # Cast columns if they exist
+            df = df.withColumn("timestamp", to_timestamp(col("timestamp"))) \
+                   .withColumn("temperature", col("temperature").cast("double"))
 
             daily_agg = (
                 df.groupBy(
@@ -538,16 +539,18 @@ class SparkAnalyticsEngine:
                 col("moving_avg_30s"),
                 # Placeholder for a longer window:
                 lit(None).cast(DoubleType()).alias("moving_avg_5m"),
-                (col("moving_avg_30s") / (col("stddev_30s") + 0.001)).alias("z_score"),
-                (col("moving_avg_30s") / (col("stddev_30s") + 0.001) > ANOMALY_THRESHOLD_STD).alias(
+                # Normalized score (stddev-based, scaled to 0-1 range for consistency with RCF)
+                least(lit(1.0), abs(col("moving_avg_30s") / (col("stddev_30s") + 0.001)) / 5.0).alias("anomaly_score"),
+                (abs(col("moving_avg_30s") / (col("stddev_30s") + 0.001)) > ANOMALY_THRESHOLD_STD).alias(
                     "is_anomaly"
                 ),
                 when(
-                    (col("moving_avg_30s") / (col("stddev_30s") + 0.001) > ANOMALY_THRESHOLD_STD),
+                    (abs(col("moving_avg_30s") / (col("stddev_30s") + 0.001)) > ANOMALY_THRESHOLD_STD),
                     0.95,
                 )
                 .otherwise(0.0)
                 .alias("anomaly_confidence"),
+                lit("spark_stddev").alias("detection_method"),
                 col("time_window.start").alias("window_start"),
                 col("time_window.end").alias("window_end"),
                 col("time_window.end").alias("timestamp"),

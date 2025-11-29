@@ -46,10 +46,9 @@ These run in strict order during normal operation:
 -   **When**: Runs first, only once per startup
 -   **Creates Topics**:
     -   `edge-iiot-stream` - Raw IoT data from devices
-    -   `anomalies` - Detected anomalies from Flink
+    -   `anomalies` - Detected anomalies from Flink (RCF-based)
     -   `local-model-updates` - Device model updates
     -   `global-model-updates` - Federated model aggregations
-    -   `analytics-results` - Batch analysis results
 -   **Critical**: YES (pipeline cannot proceed without topics)
 -   **Status**: Creates topics if they don't exist
 
@@ -109,7 +108,7 @@ These run in strict order during normal operation:
 
     -   Real-time 30-second windows
     -   Real-time 5-minute windows
-    -   Z-score anomaly detection
+    -   Statistical anomaly detection (complementary to Flink RCF)
     -   Stores in `stream_analysis_results` table
 
     **C. Model Evaluation**
@@ -347,9 +346,10 @@ docker logs -f kafka_producer
 -   **raw_value**: Latest device reading
 -   **moving_avg_30s**: 30-second moving average
 -   **moving_avg_5m**: 5-minute moving average
--   **z_score**: Statistical deviation from mean
--   **is_anomaly**: Boolean (true if Z-score > 2.5)
+-   **anomaly_score**: Normalized anomaly score (0-1 scale, compatible with RCF)
+-   **is_anomaly**: Boolean (true if anomaly detected)
 -   **anomaly_confidence**: Confidence level (0-1)
+-   **detection_method**: Algorithm used (e.g., 'spark_stddev', 'random_cut_forest')
 
 ### Model Evaluations
 

@@ -123,8 +123,8 @@ Multi-Broker Kafka Cluster:
     │  ├─ model_evaluations (Spark evaluation results)        │
     │  │  └─ global_version, prediction_result, accuracy      │
     │  │                                                      │
-    │  └─ anomalies (Flink detections from all brokers)       │
-    │     └─ device_id, broker_id, timestamp, z_score         │
+    │  └─ anomalies (Flink RCF detections from all brokers)   │
+    │     └─ device_id, value, anomaly_score, severity        │
     └──────────────────────┬──────────────────────────────────┘
                            │
                            ▼
@@ -199,8 +199,8 @@ Multi-Broker Kafka Cluster:
    │ ├─ model_evaluations (real accuracy from Spark) │
    │ │ └─ global_version, prediction_result, is_correct │
    │ │ │
-   │ └─ anomalies (detected anomalies) │
-   │ └─ device_id, value, z_score, severity │
+   │ └─ anomalies (RCF-detected anomalies) │
+   │ └─ device_id, value, anomaly_score, severity │
    └──────────────────────────┬──────────────────────────────┘
    │
    ▼
@@ -311,9 +311,10 @@ For each IoT device (independently across all 4 brokers):
 **Health:** Flink components depend on all 4 brokers being healthy before starting
 
 ```python
-z_score = (value - mean) / std_dev  # 3 math operations
-if z_score > 2.5:
-    send_alert()
+# Random Cut Forest (RCF) anomaly detection
+anomaly_score = rcf_model.score(value)  # 0.0 (normal) to 1.0 (anomaly)
+if anomaly_score > 0.4:
+    send_alert()  # Threshold-based alerting
 ````
 
 **The SGD Training Algorithm:**
@@ -340,7 +341,8 @@ for measurement in batch:
 
 -   **Learning Rate:** 0.001 (small steps, stable learning)
 -   **Batch Size:** 50 measurements
--   **Features:** [mean, std_dev, z_score]
+-   **Features:** [value, anomaly_score]
+-   **Anomaly Detection:** Random Cut Forest (RCF)
 -   **Model Type:** Logistic Regression (binary classifier)
 
 **Example Output:**
@@ -613,8 +615,9 @@ global_v70 | device_0 | 0.78 | 1 | true | 0.95 | 2025-11-07 15:20:00
 CREATE TABLE anomalies (
     device_id TEXT NOT NULL,
     value FLOAT NOT NULL,               -- 45.2
-    z_score FLOAT NOT NULL,             -- 3.2 (how extreme?)
-    severity TEXT NOT NULL,             -- "warning" or "critical"
+    anomaly_score FLOAT NOT NULL,       -- 0.0-1.0 (RCF score)
+    severity TEXT NOT NULL,             -- "info", "warning", "critical"
+    detection_method TEXT,              -- 'random_cut_forest'
     timestamp TIMESTAMPTZ NOT NULL
 );
 ```
@@ -758,8 +761,8 @@ Updates device_127's statistics:
   Mean: 42.1°C (running average)
   Std Dev: 1.8°C (volatility)
 
-Calculates Z-score: (42.5 - 42.1) / 1.8 = 0.22
-Compare to threshold: 0.22 < 2.5 → NORMAL (not anomalous)
+Calculates RCF anomaly score: 0.22 (low score = normal)
+Compare to threshold: 0.22 < 0.4 → NORMAL (not anomalous)
 
 Check if model training needed:
   Samples since last train: 47/50
@@ -776,9 +779,9 @@ STEP 4: BATCH TRAINING (Flink - After 50 samples or 60 sec)
 Flink has collected 50 measurements for device_127
 Prepares training data:
   X_train = [
-    [42.1, 1.8, 0.22],   # Features: [mean, std, z_score]
-    [41.9, 1.7, -0.12],
-    [42.3, 1.9, 0.11],
+    [42.1, 0.22],        # Features: [value, anomaly_score]
+    [41.9, 0.15],
+    [42.3, 0.18],
     ... (47 more)
   ]
   y_train = [0, 0, 0, 1, 0, ...]  # Labels: 1=anomaly, 0=normal
@@ -864,7 +867,7 @@ Downloads weights from storage
 Streams IoT data through model
 
 For each test sample:
-  Input: [mean=42.1, std=1.8, z_score=0.22]
+  Input: [value=42.1, anomaly_score=0.22]
   Sigmoid output: 0.35
   Prediction: NORMAL (< 0.5)
   Actual label: 0 (NORMAL)

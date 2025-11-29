@@ -137,68 +137,95 @@ class GrafanaConfigurator:
             logger.error("✗ No datasource UID available")
             return False
         
-        dashboard = {
-            "dashboard": {
-                "title": "FLEAD - Federated Learning Monitoring",
-                "tags": ["flead", "federated-learning", "iot"],
-                "timezone": "browser",
-                "refresh": "30s",
-                "time": {
-                    "from": "now-1h",
-                    "to": "now"
-                },
-                "panels": [
-                    # Row 1: Stats
-                    {
-                        "id": 1,
-                        "title": "Total Local Models",
-                        "type": "stat",
-                        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
-                        "targets": [{
-                            "datasource": {"uid": self.datasource_uid},
-                            "rawSql": "SELECT COUNT(*) FROM local_models",
-                            "format": "table",
-                            "refId": "A"
-                        }],
-                        "options": {
-                            "colorMode": "value",
-                            "graphMode": "none",
-                            "textMode": "auto"
-                        },
-                        "fieldConfig": {
-                            "defaults": {
-                                "color": {"mode": "thresholds"},
-                                "thresholds": {
-                                    "mode": "absolute",
-                                    "steps": [
-                                        {"value": 0, "color": "red"},
-                                        {"value": 100, "color": "yellow"},
-                                        {"value": 1000, "color": "green"}
-                                    ]
+        dashboard = None
+        
+        # Try to load from file first (mounted via docker-compose)
+        dashboard_file = "/app/dashboards/flead_dashboard.json"
+        if os.path.exists(dashboard_file):
+            try:
+                logger.info(f"Loading dashboard from {dashboard_file}...")
+                with open(dashboard_file, 'r') as f:
+                    dashboard_data = json.load(f)
+                
+                # Ensure the dashboard uses the correct datasource UID if possible, 
+                # or rely on the name "FLEAD-TimescaleDB" matching.
+                # We wrap it in the structure Grafana API expects.
+                dashboard = {
+                    "dashboard": dashboard_data,
+                    "overwrite": True
+                }
+                # Nullify ID to ensure creation/overwrite works smoothly
+                dashboard["dashboard"]["id"] = None
+                
+            except Exception as e:
+                logger.error(f"Failed to load dashboard file: {e}")
+                dashboard = None
+        else:
+            logger.warning(f"Dashboard file not found at {dashboard_file}, using hardcoded default.")
+
+        if dashboard is None:
+            dashboard = {
+                "dashboard": {
+                    "title": "FLEAD - Federated Learning Monitoring",
+                    "tags": ["flead", "federated-learning", "iot"],
+                    "timezone": "browser",
+                    "refresh": "30s",
+                    "time": {
+                        "from": "now-1h",
+                        "to": "now"
+                    },
+                    "panels": [
+                        # Row 1: Stats
+                        {
+                            "id": 1,
+                            "title": "Total Local Models",
+                            "type": "stat",
+                            "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+                            "targets": [{
+                                "datasource": {"uid": self.datasource_uid},
+                                "rawSql": "SELECT COUNT(*) FROM local_models",
+                                "format": "table",
+                                "refId": "A"
+                            }],
+                            "options": {
+                                "colorMode": "value",
+                                "graphMode": "none",
+                                "textMode": "auto"
+                            },
+                            "fieldConfig": {
+                                "defaults": {
+                                    "color": {"mode": "thresholds"},
+                                    "thresholds": {
+                                        "mode": "absolute",
+                                        "steps": [
+                                            {"value": 0, "color": "red"},
+                                            {"value": 100, "color": "yellow"},
+                                            {"value": 1000, "color": "green"}
+                                        ]
+                                    }
                                 }
                             }
-                        }
-                    },
-                    {
-                        "id": 2,
-                        "title": "Global Models Created",
-                        "type": "stat",
-                        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
-                        "targets": [{
-                            "datasource": {"uid": self.datasource_uid},
-                            "rawSql": "SELECT COUNT(*) FROM federated_models",
-                            "format": "table",
-                            "refId": "A"
-                        }],
-                        "options": {
-                            "colorMode": "value",
-                            "graphMode": "none"
                         },
-                        "fieldConfig": {
-                            "defaults": {
-                                "color": {"mode": "palette-classic"}
+                        {
+                            "id": 2,
+                            "title": "Global Models Created",
+                            "type": "stat",
+                            "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+                            "targets": [{
+                                "datasource": {"uid": self.datasource_uid},
+                                "rawSql": "SELECT COUNT(*) FROM federated_models",
+                                "format": "table",
+                                "refId": "A"
+                            }],
+                            "options": {
+                                "colorMode": "value",
+                                "graphMode": "none"
+                            },
+                            "fieldConfig": {
+                                "defaults": {
+                                    "color": {"mode": "palette-classic"}
+                                }
                             }
-                        }
                     },
                     {
                         "id": 3,

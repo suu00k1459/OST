@@ -1,0 +1,473 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Deep dive into individual IoT device behavior, sensor patterns, and health",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 2,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": ["flead"],
+      "title": "FLEAD Dashboards",
+      "type": "dashboards"
+    }
+  ],
+  "liveNow": true,
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "📱 Device Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total Devices",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT now() AS time, COUNT(DISTINCT device_id) AS value FROM iot_data;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#00D4FF", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Active (1h)",
+      "description": "Devices with activity in last hour",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT now() AS time, COUNT(DISTINCT device_id) AS value FROM iot_data;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#2ECC40", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "With Anomalies",
+      "description": "Devices that have reported anomalies",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT now() AS time, COUNT(DISTINCT device_id) AS value FROM anomalies WHERE $__timeFilter(ts);"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#2ECC40", "value": null },
+              { "color": "#FF851B", "value": 10 },
+              { "color": "#FF4136", "value": 50 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Training Devices",
+      "description": "Devices participating in federated learning",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT now() AS time, COUNT(DISTINCT device_id) AS value FROM local_models WHERE $__timeFilter(created_at);"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#9D70F9", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Avg Value",
+      "description": "Average sensor reading across all devices",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT now() AS time, ROUND(AVG(value)::numeric, 2) AS value FROM iot_data;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#4ECDC4", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Data Points",
+      "description": "Total IoT readings in time range",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT now() AS time, COUNT(*) AS value FROM iot_data;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#FFE66D", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "📊 Device Selection: $device",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false,
+      "repeat": "device",
+      "repeatDirection": "h"
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "📈 Sensor Readings: $device",
+      "description": "Raw sensor values over time",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT ts AS time, value AS \"Sensor Value\" FROM iot_data WHERE device_id = '$device' ORDER BY ts;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "showPoints": "auto",
+            "pointSize": 3
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Sensor Value" }, "properties": [{ "id": "color", "value": { "fixedColor": "#00D4FF", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["min", "mean", "max", "last"] },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Device Stats",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 },
+      "targets": [
+        {
+          "refId": "Messages",
+          "format": "table",
+          "rawSql": "SELECT 'Total Messages' AS metric, COUNT(*)::text AS value FROM iot_data WHERE device_id = '$device';"
+        },
+        {
+          "refId": "Anomalies",
+          "format": "table",
+          "rawSql": "SELECT 'Anomalies' AS metric, COUNT(*)::text AS value FROM anomalies WHERE $__timeFilter(ts) AND device_id = '$device';"
+        },
+        {
+          "refId": "Models",
+          "format": "table",
+          "rawSql": "SELECT 'Local Models' AS metric, COUNT(*)::text AS value FROM local_models WHERE $__timeFilter(created_at) AND device_id = '$device';"
+        },
+        {
+          "refId": "Accuracy",
+          "format": "table",
+          "rawSql": "SELECT 'Best Accuracy' AS metric, COALESCE(ROUND(MAX(accuracy)::numeric * 100, 1)::text || '%', 'N/A') AS value FROM local_models WHERE $__timeFilter(created_at) AND device_id = '$device';"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#4ECDC4", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^value$/", "values": false },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "transformations": [{ "id": "merge" }]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "🔥 Anomaly Score Timeline: $device",
+      "description": "Anomaly detection scores over time",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT ts AS time, anomaly_score AS \"RCF Score\" FROM anomalies WHERE $__timeFilter(ts) AND device_id = '$device' ORDER BY ts;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 1,
+          "color": { "mode": "continuous-RdYlGn", "seriesBy": "last" },
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "fillOpacity": 0,
+            "showPoints": "always"
+          }
+        }
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "🎯 Model Accuracy Trend: $device",
+      "description": "Local model accuracy over training iterations",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT created_at AS time, accuracy * 100 AS \"Accuracy %\" FROM local_models WHERE $__timeFilter(created_at) AND device_id = '$device' ORDER BY created_at;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "always",
+            "pointSize": 6
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Accuracy %" }, "properties": [{ "id": "color", "value": { "fixedColor": "#2ECC40", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["min", "mean", "max"] },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "📋 Device Fleet Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "collapsed": false
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "📱 Device Fleet Status",
+      "description": "Complete device inventory with health metrics",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH device_stats AS (\n  SELECT\n    device_id,\n    COUNT(*) AS msg_count,\n    ROUND(AVG(value)::numeric, 2) AS avg_value,\n    ROUND(MIN(value)::numeric, 2) AS min_value,\n    ROUND(MAX(value)::numeric, 2) AS max_value,\n    MAX(ts) AS last_seen\n  FROM iot_data\n  GROUP BY device_id\n),\nanomaly_stats AS (\n  SELECT device_id, COUNT(*) AS anomaly_count, ROUND(AVG(anomaly_score)::numeric, 3) AS avg_score\n  FROM anomalies GROUP BY device_id\n),\nmodel_stats AS (\n  SELECT device_id, COUNT(*) AS model_count, ROUND(MAX(accuracy)::numeric * 100, 1) AS best_accuracy\n  FROM local_models GROUP BY device_id\n)\nSELECT\n  d.device_id AS \"Device\",\n  d.msg_count AS \"Messages\",\n  d.avg_value AS \"Avg Value\",\n  d.min_value AS \"Min\",\n  d.max_value AS \"Max\",\n  COALESCE(a.anomaly_count, 0) AS \"Anomalies\",\n  COALESCE(a.avg_score, 0) AS \"Avg Score\",\n  COALESCE(m.model_count, 0) AS \"Models\",\n  COALESCE(m.best_accuracy, 0) AS \"Best Acc %\",\n  d.last_seen AS \"Last Seen\",\n  CASE\n    WHEN COALESCE(a.anomaly_count, 0) > 10 THEN '🔴 Critical'\n    WHEN COALESCE(a.anomaly_count, 0) > 3 THEN '🟠 Warning'\n    ELSE '🟢 Healthy'\n  END AS \"Status\"\nFROM device_stats d\nLEFT JOIN anomaly_stats a ON d.device_id = a.device_id\nLEFT JOIN model_stats m ON d.device_id = m.device_id\nORDER BY d.msg_count DESC\nLIMIT 100;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true, "inspect": true }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Messages" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient", "valueDisplayMode": "text" } }, { "id": "color", "value": { "mode": "continuous-BlYlRd" } }, { "id": "min", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "Anomalies" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "transparent", "value": null }, { "color": "#FFDC00", "value": 1 }, { "color": "#FF851B", "value": 5 }, { "color": "#FF4136", "value": 10 }] } }, { "id": "color", "value": { "mode": "thresholds" } }] },
+          { "matcher": { "id": "byName", "options": "Best Acc %" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic", "valueDisplayMode": "text" } }, { "id": "color", "value": { "mode": "continuous-GrYlRd" } }, { "id": "min", "value": 0 }, { "id": "max", "value": 100 }] },
+          { "matcher": { "id": "byName", "options": "Last Seen" }, "properties": [{ "id": "unit", "value": "dateTimeAsLocal" }] },
+          { "matcher": { "id": "byName", "options": "Status" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-text" } }] }
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": true, "reducer": ["sum"], "fields": ["Messages", "Anomalies", "Models"] } }
+    },
+    {
+      "id": 103,
+      "type": "row",
+      "title": "🔥 Heatmaps & Patterns",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "collapsed": false
+    },
+    {
+      "id": 30,
+      "type": "heatmap",
+      "title": "🌡️ Device Value Heatmap (Hourly)",
+      "description": "Sensor value patterns across devices over time",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 35 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT time_bucket('1 minute', ts) AS time, device_id, ROUND(AVG(value)::numeric, 2) AS value FROM iot_data GROUP BY 1, device_id ORDER BY 1, device_id LIMIT 5000;"
+        }
+      ],
+      "fieldConfig": { "defaults": {} },
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": { "mode": "scheme", "scheme": "Spectral", "steps": 128, "reverse": true },
+        "yAxis": { "reverse": false },
+        "tooltip": { "show": true },
+        "legend": { "show": true }
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["flead", "iot", "devices"],
+  "templating": {
+    "list": [
+      {
+        "allValue": "",
+        "current": {},
+        "datasource": "FLEAD-TimescaleDB",
+        "definition": "SELECT DISTINCT device_id FROM iot_data ORDER BY device_id LIMIT 100",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Device",
+        "multi": false,
+        "name": "device",
+        "options": [],
+        "query": "SELECT DISTINCT device_id FROM iot_data ORDER BY device_id LIMIT 100;",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"],
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d"]
+  },
+  "timezone": "browser",
+  "title": "FLEAD - Device Explorer",
+  "uid": "flead-device",
+  "version": 1,
+  "weekStart": ""
+}

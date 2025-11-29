@@ -17,4 +17,4 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 
 ENV KAGGLE_CONFIG_DIR=/root/.kaggle
 
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--ServerApp.token=", "--ServerApp.password="]
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--ServerApp.token=", "--ServerApp.password="]

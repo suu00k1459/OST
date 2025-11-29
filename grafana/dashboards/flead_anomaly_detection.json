@@ -1,0 +1,558 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Deep dive into anomaly detection patterns and Random Cut Forest analysis",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 2,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": ["flead"],
+      "title": "FLEAD Dashboards",
+      "type": "dashboards"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "🚨 Anomaly Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total Anomalies",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM anomalies WHERE ('$device' = 'All' OR device_id = '$device');"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#2ECC40", "value": null },
+              { "color": "#FFDC00", "value": 1000 },
+              { "color": "#FF851B", "value": 5000 },
+              { "color": "#FF4136", "value": 10000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "🔴 Critical",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM anomalies WHERE severity = 'critical' AND ('$device' = 'All' OR device_id = '$device');"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#FF4136", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "🟠 Warning",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM anomalies WHERE severity = 'warning' AND ('$device' = 'All' OR device_id = '$device');"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#FF851B", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "🟡 Info",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM anomalies WHERE severity = 'info' AND ('$device' = 'All' OR device_id = '$device');"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#FFDC00", "value": null }] }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 5,
+      "type": "gauge",
+      "title": "Avg RCF Score",
+      "description": "Average Random Cut Forest anomaly score",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT ROUND(COALESCE(AVG(anomaly_score), 0)::numeric, 3) AS value FROM anomalies WHERE ('$device' = 'All' OR device_id = '$device');"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 3,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#2ECC40", "value": null },
+              { "color": "#FFDC00", "value": 0.3 },
+              { "color": "#FF851B", "value": 0.5 },
+              { "color": "#FF4136", "value": 0.7 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Anomaly Rate",
+      "description": "Percentage of anomalies by avg score",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT ROUND((AVG(anomaly_score) * 100)::numeric, 1) AS value FROM anomalies WHERE ('$device' = 'All' OR device_id = '$device');"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#2ECC40", "value": null },
+              { "color": "#FFDC00", "value": 30 },
+              { "color": "#FF851B", "value": 50 },
+              { "color": "#FF4136", "value": 70 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "📈 Anomaly Trends",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "🔥 Anomaly Score Timeline",
+      "description": "Individual anomaly scores over time with severity coloring",
+      "datasource": { "type": "postgres", "uid": "FLEAD-TimescaleDB" },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "refId": "Scores",
+          "format": "time_series",
+          "rawSql": "SELECT ts AS time, anomaly_score AS score FROM anomalies ORDER BY ts DESC LIMIT 3000;",
+          "datasource": { "type": "postgres", "uid": "FLEAD-TimescaleDB" }
+        },
+        {
+          "refId": "Threshold",
+          "format": "time_series",
+          "rawSql": "SELECT ts AS time, 0.5 AS threshold FROM anomalies ORDER BY ts DESC LIMIT 100;",
+          "datasource": { "type": "postgres", "uid": "FLEAD-TimescaleDB" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 1,
+          "color": { "mode": "continuous-RdYlGn", "seriesBy": "last" },
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 4,
+            "lineWidth": 0,
+            "fillOpacity": 0,
+            "showPoints": "always"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "threshold" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "#FF6B6B", "mode": "fixed" } },
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 5] } },
+              { "id": "custom.lineWidth", "value": 2 },
+              { "id": "custom.pointSize", "value": 0 },
+              { "id": "custom.showPoints", "value": "never" }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 11,
+      "type": "histogram",
+      "title": "📊 Score Distribution",
+      "description": "Distribution of RCF anomaly scores",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT anomaly_score AS score FROM anomalies WHERE ('$device' = 'All' OR device_id = '$device');"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 80, "gradientMode": "scheme", "hideFrom": { "legend": false, "tooltip": false, "viz": false } }
+        }
+      },
+      "options": {
+        "bucketCount": 20,
+        "bucketSize": 0.05,
+        "combine": false,
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "📉 Anomaly Count by Severity (Stacked)",
+      "description": "Breakdown of anomalies by severity level over time",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "targets": [
+        {
+          "refId": "CRITICAL",
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('1 minute', ts) AS time, COUNT(*) AS critical FROM anomalies WHERE severity = 'critical' AND ('$device' = 'All' OR device_id = '$device') GROUP BY 1 ORDER BY 1;"
+        },
+        {
+          "refId": "WARNING",
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('1 minute', ts) AS time, COUNT(*) AS warning FROM anomalies WHERE severity = 'warning' AND ('$device' = 'All' OR device_id = '$device') GROUP BY 1 ORDER BY 1;"
+        },
+        {
+          "refId": "INFO",
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('1 minute', ts) AS time, COUNT(*) AS info FROM anomalies WHERE severity = 'info' AND ('$device' = 'All' OR device_id = '$device') GROUP BY 1 ORDER BY 1;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 0,
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "critical" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF4136", "mode": "fixed" } }, { "id": "displayName", "value": "Critical" }] },
+          { "matcher": { "id": "byName", "options": "warning" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF851B", "mode": "fixed" } }, { "id": "displayName", "value": "Warning" }] },
+          { "matcher": { "id": "byName", "options": "info" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FFDC00", "mode": "fixed" } }, { "id": "displayName", "value": "Info" }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "📈 Rolling Anomaly Rate (1min window)",
+      "description": "Average anomaly score trend over time",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('1 minute', ts) AS time, ROUND(AVG(anomaly_score)::numeric, 3) AS avg_score, ROUND(MAX(anomaly_score)::numeric, 3) AS max_score, COUNT(*) AS count FROM anomalies WHERE ('$device' = 'All' OR device_id = '$device') GROUP BY 1 ORDER BY 1;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 5
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "count" }, "properties": [{ "id": "custom.drawStyle", "value": "bars" }, { "id": "custom.fillOpacity", "value": 30 }, { "id": "color", "value": { "fixedColor": "#888888", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "🔍 Device Deep Dive",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "collapsed": false
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "🏆 Top Anomalous Devices",
+      "description": "Devices ranked by anomaly frequency and severity",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT device_id AS device, COUNT(*) AS total, SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) AS critical, SUM(CASE WHEN severity = 'warning' THEN 1 ELSE 0 END) AS warning, SUM(CASE WHEN severity = 'info' THEN 1 ELSE 0 END) AS info, ROUND(AVG(anomaly_score)::numeric, 3) AS avg_score, ROUND(MAX(anomaly_score)::numeric, 3) AS max_score, MAX(ts) AS last_alert FROM anomalies GROUP BY device_id ORDER BY total DESC LIMIT 20;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true, "inspect": true }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "total" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient", "valueDisplayMode": "text" } }, { "id": "color", "value": { "mode": "continuous-RdYlGn" } }, { "id": "min", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "critical" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "transparent", "value": null }, { "color": "#FF4136", "value": 1 }] } }, { "id": "color", "value": { "mode": "thresholds" } }] },
+          { "matcher": { "id": "byName", "options": "avg_score" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "#2ECC40", "value": null }, { "color": "#FFDC00", "value": 0.4 }, { "color": "#FF851B", "value": 0.6 }, { "color": "#FF4136", "value": 0.8 }] } }, { "id": "color", "value": { "mode": "thresholds" } }] },
+          { "matcher": { "id": "byName", "options": "last_alert" }, "properties": [{ "id": "unit", "value": "dateTimeAsLocal" }] }
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": true, "reducer": ["sum"], "fields": ["total", "critical", "warning", "info"] } }
+    },
+    {
+      "id": 21,
+      "type": "piechart",
+      "title": "🥧 Anomaly Share by Device",
+      "description": "Which devices contribute most to anomalies",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 10, "w": 6, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT device_id, COUNT(*) AS count FROM anomalies GROUP BY device_id ORDER BY count DESC LIMIT 10;"
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" } } },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": true },
+        "pieType": "donut",
+        "tooltip": { "mode": "single" },
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "values": ["percent"] }
+      }
+    },
+    {
+      "id": 22,
+      "type": "barchart",
+      "title": "📊 Recent Device Activity",
+      "description": "Anomaly counts by device in the last detection run",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 10, "w": 6, "x": 18, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT device_id, COUNT(*) AS anomalies FROM anomalies WHERE ts > (SELECT MAX(ts) - interval '30 minutes' FROM anomalies) GROUP BY device_id ORDER BY anomalies DESC LIMIT 15;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 80, "gradientMode": "hue" }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "legend": { "showLegend": false },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "id": 103,
+      "type": "row",
+      "title": "📋 Detailed Anomaly Log",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "collapsed": false
+    },
+    {
+      "id": 30,
+      "type": "table",
+      "title": "🔍 Recent Anomalies",
+      "description": "Detailed view of individual anomaly detections",
+      "datasource": "FLEAD-TimescaleDB",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 35 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT ts AS timestamp, device_id AS device, ROUND(value::numeric, 4) AS sensor_value, ROUND(anomaly_score::numeric, 4) AS rcf_score, severity, detection_method AS method, CASE WHEN anomaly_score >= 0.8 THEN '🔴 Critical' WHEN anomaly_score >= 0.6 THEN '🟠 Warning' WHEN anomaly_score >= 0.4 THEN '🟡 Alert' ELSE '🟢 Low' END AS risk_level FROM anomalies WHERE ('$device' = 'All' OR device_id = '$device') ORDER BY ts DESC LIMIT 100;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true, "inspect": true }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "timestamp" }, "properties": [{ "id": "unit", "value": "dateTimeAsLocal" }] },
+          { "matcher": { "id": "byName", "options": "rcf_score" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient", "valueDisplayMode": "text" } }, { "id": "color", "value": { "mode": "continuous-RdYlGn" } }, { "id": "min", "value": 0 }, { "id": "max", "value": 1 }] },
+          { "matcher": { "id": "byName", "options": "severity" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "critical": { "color": "red", "text": "🔴 Critical" }, "warning": { "color": "orange", "text": "🟠 Warning" }, "info": { "color": "yellow", "text": "🟡 Info" } } }] }] },
+          { "matcher": { "id": "byName", "options": "risk_level" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-text" } }] }
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": true, "reducer": ["count"], "countRows": true } }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["flead", "iot", "anomaly", "rcf"],
+  "templating": {
+    "list": [
+      {
+        "allValue": "All",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": "FLEAD-TimescaleDB",
+        "definition": "SELECT DISTINCT device_id FROM anomalies ORDER BY device_id",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Device",
+        "multi": false,
+        "name": "device",
+        "options": [],
+        "query": "SELECT DISTINCT device_id FROM anomalies ORDER BY device_id;",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"],
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d"]
+  },
+  "timezone": "browser",
+  "title": "FLEAD - Anomaly Detection Center",
+  "uid": "flead-anomaly",
+  "version": 1,
+  "weekStart": ""
+}
