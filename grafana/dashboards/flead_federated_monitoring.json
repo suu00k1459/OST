@@ -1,5 +1,5 @@
 {
-  "title": "FLEAD - Federated Learning Monitoring",
+  "title": "FLEAD - Federated Learning Monitoring - Imed",
   "description": "Monitoring of local and global models, training activity, device activity, and global performance.",
   "tags": ["flead", "monitoring", "federated-learning"],
   "timezone": "browser",
