@@ -235,58 +235,54 @@
     },
     {
       "id": 20,
-      "type": "table",
+      "type": "barchart",
       "title": "🏆 Top Anomalous Devices",
-      "description": "Complete device anomaly statistics",
-      "datasource": {
-        "type": "postgres",
-        "uid": "FLEAD-TimescaleDB"
-      },
+      "description": "Devices with most anomalies detected",
+      "datasource": { "type": "postgres", "uid": "FLEAD-TimescaleDB" },
       "gridPos": { "h": 12, "w": 12, "x": 0, "y": 21 },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT device_id, COUNT(*) AS total, ROUND(AVG(anomaly_score)::numeric, 3) AS avg_score FROM anomalies GROUP BY device_id ORDER BY total DESC LIMIT 30;",
-          "datasource": {
-            "type": "postgres",
-            "uid": "FLEAD-TimescaleDB"
-          }
+          "rawSql": "SELECT device_id AS device, COUNT(*) AS anomalies FROM anomalies GROUP BY device_id ORDER BY anomalies DESC LIMIT 15;",
+          "datasource": { "type": "postgres", "uid": "FLEAD-TimescaleDB" }
         }
       ],
       "fieldConfig": {
-        "defaults": { "custom": { "align": "auto", "filterable": true } },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "total" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient", "valueDisplayMode": "text" } }, { "id": "color", "value": { "mode": "continuous-RdYlGn" } }, { "id": "min", "value": 0 }] }
-        ]
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "fillOpacity": 80, "gradientMode": "hue", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineWidth": 1, "scaleDistribution": { "type": "linear" }, "thresholdsStyle": { "mode": "off" } },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 80 }] }
+        },
+        "overrides": []
       },
-      "options": { "showHeader": true, "cellHeight": "sm" }
+      "options": { "barRadius": 0.1, "barWidth": 0.8, "fullHighlight": false, "groupWidth": 0.7, "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false }, "orientation": "horizontal", "showValue": "always", "stacking": "none", "tooltip": { "mode": "single", "sort": "none" }, "xTickLabelRotation": 0, "xTickLabelSpacing": 0 }
     },
     {
       "id": 21,
-      "type": "timeseries",
-      "title": "📈 Device Anomaly History",
-      "description": "Anomaly scores over time",
-      "datasource": {
-        "type": "postgres",
-        "uid": "FLEAD-TimescaleDB"
-      },
+      "type": "barchart",
+      "title": "📈 Anomalies by Severity",
+      "description": "Distribution of anomalies by severity level",
+      "datasource": { "type": "postgres", "uid": "FLEAD-TimescaleDB" },
       "gridPos": { "h": 6, "w": 12, "x": 12, "y": 21 },
       "targets": [
         {
           "refId": "A",
-          "format": "time_series",
-          "rawSql": "SELECT ts AS time, anomaly_score AS score FROM anomalies ORDER BY ts LIMIT 500;",
-          "datasource": {
-            "type": "postgres",
-            "uid": "FLEAD-TimescaleDB"
-          }
+          "format": "table",
+          "rawSql": "SELECT severity, COUNT(*) AS count FROM anomalies GROUP BY severity ORDER BY count DESC;",
+          "datasource": { "type": "postgres", "uid": "FLEAD-TimescaleDB" }
         }
       ],
       "fieldConfig": {
-        "defaults": { "min": 0, "max": 1, "custom": { "drawStyle": "points", "pointSize": 4 } }
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 80, "gradientMode": "hue" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "critical" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF4136", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "warning" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FFDC00", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "info" }, "properties": [{ "id": "color", "value": { "fixedColor": "#2ECC40", "mode": "fixed" } }] }
+        ]
       },
-      "options": { "legend": { "showLegend": true }, "tooltip": { "mode": "multi" } }
+      "options": { "barRadius": 0.2, "barWidth": 0.6, "orientation": "horizontal", "showValue": "always", "legend": { "showLegend": false }, "tooltip": { "mode": "single" } }
     },
     {
       "id": 22,

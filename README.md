@@ -43,6 +43,31 @@ This approach eliminates NumPy compilation issues on Windows and ensures identic
 -   Cross-platform deployment (Windows, macOS, Linux)
 -   Automatic service orchestration and health checking
 
+## Random Cut Forest (RCF) Anomaly Detection
+
+The platform uses Random Cut Forest for real-time anomaly detection in IoT data streams, leveraging key stream mining concepts:
+
+### Incremental Learning
+RCF uses 50 trees, each maintaining only 256 samples—not the entire data history. When new data arrives, points are inserted incrementally and old points are automatically forgotten when the tree exceeds capacity. No batch retraining is needed; the model updates itself point-by-point.
+
+### Sliding Windows (Shingling)
+Instead of scoring single values, we create a shingle (sliding window of size 4) that captures the temporal pattern `[t-3, t-2, t-1, t]`. This lets RCF detect sequential anomalies like sudden spikes and trend breaks, not just point outliers. The buffer slides forward with each new reading, always keeping the most recent 4 values.
+
+### Drift-Adaptive Modeling
+Each tree holds only 256 samples, so older data naturally "falls out." This creates implicit concept drift adaptation—the model always reflects recent behavior. If a sensor's normal range shifts over time (e.g., seasonal temperature changes), the model adapts within approximately 256 samples.
+
+### Real-Time Scoring
+Collusive Displacement (CoDisp) is computed in logarithmic time O(log n). Scores are normalized to a [0, 1] range for interpretable thresholding, and anomalies are flagged instantly as each reading arrives.
+
+```
+IoT Reading → Shingle Buffer → RCF Insert → CoDisp Score → Threshold → Alert
+     ↓              ↓              ↓              ↓            ↓
+ {"temp": 25}  [23,24,24,25]   Tree update     0.12        normal
+ {"temp": 99}  [24,24,25,99]   Tree update     0.85        → TimescaleDB
+```
+
+This design means the model is always current, never needs retraining, and runs indefinitely on streaming data with constant memory usage.
+
 **Core Technologies:**
 
 -   Apache Kafka 7.6.1 - Single-broker message streaming (KRaft mode)
@@ -60,6 +85,12 @@ This platform uses the Edge-IIoTset dataset, which contains network traffic and 
 -   **Preprocessing Notebook**: [Data Preprocessing](https://www.kaggle.com/code/imedbenmadi/notebookf27d2cfbac)
 -   **Features**: 60+ network traffic features, including TCP, MQTT, DNS, and HTTP metrics
 -   **Devices**: 2407 preprocessed device CSV files
+
+## 🎥 Video Tutorials
+
+| Topic | Description | Link |
+|-------|-------------|------|
+| Data Preprocessing | How we transform raw Edge-IIoT data into streaming format | [▶️ Watch on YouTube](https://youtu.be/g82BOQFhSbc) |
 
 ## Docker Deployment Guide
 

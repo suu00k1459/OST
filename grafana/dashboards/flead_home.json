@@ -27,7 +27,7 @@
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "html",
-        "content": "<div style=\"text-align: center; padding: 20px;\">\n  <h1 style=\"color: #00D4FF; font-size: 48px; margin-bottom: 10px;\">🧠 FLEAD</h1>\n  <h2 style=\"color: #4ECDC4; font-size: 24px; font-weight: normal;\">Federated Learning for Edge Anomaly Detection</h2>\n  <p style=\"color: #888; font-size: 14px; margin-top: 20px;\">Real-time IoT monitoring • Distributed ML • Anomaly Detection</p>\n</div>"
+        "content": "<div style=\"text-align: center; padding: 20px;\">\n  <h1 style=\"color: #00D4FF; font-size: 48px; margin-bottom: 10px;\">🧠 FLEAD</h1>\n  <h2 style=\"color: #4ECDC4; font-size: 24px; font-weight: normal;\">Federated Learning for Anomaly Detection</h2>\n  <p style=\"color: #888; font-size: 14px; margin-top: 20px;\">Real-time IoT monitoring • Distributed ML • Anomaly Detection</p>\n</div>"
       }
     },
     {
@@ -274,10 +274,37 @@
       }
     },
     {
+      "id": 103,
+      "type": "row",
+      "title": "🎥 Video Tutorial",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "collapsed": false
+    },
+    {
+      "id": 30,
+      "type": "text",
+      "title": "🎥 Data Preprocessing Tutorial",
+      "gridPos": { "h": 10, "w": 10, "x": 0, "y": 25 },
+      "options": {
+        "mode": "markdown",
+        "content": "## 📹 Video: Data Preprocessing Pipeline\n\n[![Data Preprocessing Tutorial](https://img.youtube.com/vi/g82BOQFhSbc/maxresdefault.jpg)](https://youtu.be/g82BOQFhSbc)\n\n### ▶️ [Watch on YouTube](https://youtu.be/g82BOQFhSbc)\n\n*Click the thumbnail or link above to watch*"
+      }
+    },
+    {
+      "id": 31,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 10, "w": 14, "x": 10, "y": 25 },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 10px; padding: 25px; height: 100%; border: 1px solid #00D4FF;\">\n  <h3 style=\"color: #00D4FF; margin-bottom: 15px;\">📚 Data Preprocessing Pipeline</h3>\n  <p style=\"color: #ccc; font-size: 14px; line-height: 1.6;\">Learn how we transform raw Edge-IIoT sensor data into streaming-ready format:</p>\n  <ul style=\"color: #aaa; font-size: 13px; margin-top: 15px; line-height: 2;\">\n    <li>🔹 Kaggle dataset download & extraction</li>\n    <li>🔹 Data cleaning & normalization</li>\n    <li>🔹 Device-based partitioning (2400 devices)</li>\n    <li>🔹 Streaming format preparation for Kafka</li>\n  </ul>\n  <p style=\"color: #888; font-size: 12px; margin-top: 20px;\">This preprocessing enables real-time anomaly detection with Random Cut Forest (RCF) algorithm.</p>\n</div>"
+      }
+    },
+    {
       "id": 102,
       "type": "row",
       "title": "📈 Live Activity",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
       "collapsed": false
     },
     {
@@ -285,7 +312,7 @@
       "type": "timeseries",
       "title": "📊 System Activity",
       "datasource": "FLEAD-TimescaleDB",
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 25 },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 36 },
       "targets": [
         {
           "refId": "Anomalies",
@@ -324,7 +351,7 @@
       "type": "piechart",
       "title": "🔥 Anomaly Severity",
       "datasource": "FLEAD-TimescaleDB",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 25 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 36 },
       "targets": [
         {
           "refId": "A",
