@@ -1,0 +1,25 @@
+5. requirements
+numpy<2.0.0,>=1.24.0
+pandas>=2.0.0,<2.3.0
+scikit-learn>=1.3.0
+matplotlib>=3.7.0
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.0
+kaggle>=1.6.0
+kafka-python>=2.0.2
+python-dotenv>=1.0.0
+jupyter>=1.0.0
+flask>=3.0.0
+flask-cors>=4.0.0
+flask-socketio>=5.3.0
+python-socketio>=5.10.0
+python-engineio>=4.8.0
+simple-websocket>=0.11.0
+docker>=7.0.0
+requests>=2.32.3
+nbformat>=5.10.0
+nbconvert>=7.14.0
+werkzeug>=3.0.0
+setuptools>=70.0.0
+numexpr>=2.8.0
+xgboost>=2.0.0
