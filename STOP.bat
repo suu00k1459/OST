@@ -17,17 +17,31 @@ echo ===================================================
 echo.
 
 echo Stopping all services...
-docker compose down -v --remove-orphans
-echo Done.
 echo.
 
+REM Force kill all running containers
+echo Killing running containers...
+for /f "tokens=*" %%i in ('docker ps -q 2^>nul') do docker kill %%i >nul 2>&1
+echo Done.
+
+REM Force remove all containers
+echo Removing all containers...
+for /f "tokens=*" %%i in ('docker ps -aq 2^>nul') do docker rm -f %%i >nul 2>&1
+echo Done.
+
+REM Docker compose cleanup
+echo Running docker compose cleanup...
+docker compose down -v --remove-orphans >nul 2>&1
+echo Done.
+
+REM Prune volumes
+echo Pruning unused volumes...
+docker volume prune -f >nul 2>&1
+echo Done.
+
+REM Stop leftover Python processes
 echo Stopping leftover Python processes (may kill other Python apps)...
 taskkill /IM python.exe /F >nul 2>&1
-echo Done.
-echo.
-
-echo Cleaning up stopped Docker containers...
-docker container prune -f >nul 2>&1
 echo Done.
 echo.
 

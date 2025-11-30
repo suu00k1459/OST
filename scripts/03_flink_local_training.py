@@ -602,17 +602,16 @@ def main():
     # Optimize buffer timeout for lower latency
     env.set_buffer_timeout(100)  # 100ms buffer timeout
 
-    # ---- Make sure Kafka connector + client jars are on the JVM classpath ----
+    # ---- Make sure Kafka connector jar is on the JVM classpath ----
+    # Use the SQL connector fat JAR which bundles all dependencies
     jar_base = "/opt/flink/usrlib"
-    kafka_connector_jar = f"file://{jar_base}/flink-connector-kafka-3.1.0-1.18.jar"
-    kafka_clients_jar   = f"file://{jar_base}/kafka-clients-3.1.0.jar"
+    kafka_sql_connector_jar = f"file://{jar_base}/flink-sql-connector-kafka-3.1.0-1.18.jar"
 
-    logger.info("Adding Kafka jars to pipeline:")
-    logger.info("  %s", kafka_connector_jar)
-    logger.info("  %s", kafka_clients_jar)
+    logger.info("Adding Kafka jar to pipeline:")
+    logger.info("  %s", kafka_sql_connector_jar)
 
-    env.add_jars(kafka_connector_jar, kafka_clients_jar)
-    env.add_classpaths(kafka_connector_jar, kafka_clients_jar)
+    env.add_jars(kafka_sql_connector_jar)
+    env.add_classpaths(kafka_sql_connector_jar)
     # --------------------------------------------------------------------------
 
     # Kafka Source (Flink 1.18+)

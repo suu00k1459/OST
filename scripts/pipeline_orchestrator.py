@@ -258,18 +258,54 @@ def start_spark_analytics_nonblocking(description: str, script_path: Path) -> No
         logger.error("Failed to submit Spark analytics job: %s", e)
 
 
+def _wait_for_flink_rest_api(timeout: int = 120, interval: int = 5) -> bool:
+    """
+    Wait for Flink REST API to be ready (not just container running).
+    This ensures the actor system is fully initialized before job submission.
+    """
+    deadline = time.time() + timeout
+    logger.info("Waiting for Flink REST API to be ready (max %ds)...", timeout)
+    
+    while time.time() < deadline:
+        # First check container is running
+        if not is_container_running("flink-jobmanager"):
+            logger.info("  flink-jobmanager container not running yet...")
+            time.sleep(interval)
+            continue
+        
+        # Try to reach Flink REST API inside container
+        try:
+            result = subprocess.run(
+                ["docker", "exec", "flink-jobmanager", "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:8081/overview"],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0 and result.stdout.strip() == "200":
+                logger.info("  Flink REST API is ready!")
+                return True
+            else:
+                logger.info("  Flink REST API not ready yet (http: %s)...", result.stdout.strip() if result.stdout else "N/A")
+        except subprocess.TimeoutExpired:
+            logger.info("  Flink REST API check timed out...")
+        except Exception as e:
+            logger.info("  Flink REST API check failed: %s", e)
+        
+        time.sleep(interval)
+    
+    return False
+
+
 def submit_flink_local_training_job() -> None:
     """
     Submit the Flink local training job to the JobManager via docker exec.
 
-    This mirrors the manual command you’ve been using:
+    This mirrors the manual command you've been using:
       docker exec -it flink-jobmanager \
         flink run -d -py /opt/flink/scripts/03_flink_local_training.py
     """
     logger.info("=" * 70)
     logger.info("Starting: Flink Local Model Training (Real-time Streaming)")
     logger.info("=" * 70)
-    logger.info("  Waiting for service to complete...")
+    logger.info("  Waiting for Flink REST API to be ready...")
 
     cmd = [
         "docker",
@@ -281,9 +317,11 @@ def submit_flink_local_training_job() -> None:
         "-py",
         "/opt/flink/scripts/03_flink_local_training.py",
     ]
-    # Ensure flink-jobmanager is up (short wait if necessary)
-    if not _wait_for_specific_containers(["flink-jobmanager"], timeout=60, interval=2):
-        logger.warning("Flink JobManager not ready, attempt to submit job anyway")
+    # Wait for Flink REST API to be ready (actor system fully initialized)
+    if not _wait_for_flink_rest_api(timeout=180, interval=5):
+        logger.warning("Flink REST API not ready after 180s, attempting job submission anyway...")
+    
+    logger.info("  Submitting Flink job...")
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:

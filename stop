@@ -16,19 +16,30 @@ echo "==================================================="
 echo
 
 echo "Stopping all services..."
-if docker compose version >/dev/null 2>&1; then
-  docker compose down -v --remove-orphans
-elif command -v docker-compose >/dev/null 2>&1; then
-  docker-compose down -v --remove-orphans
-else
-  echo "[WARNING] Docker Compose not found, trying docker stop..."
-  docker stop $(docker ps -q) 2>/dev/null || true
-fi
-echo "Done."
 echo
 
-echo "Cleaning up stopped Docker containers..."
-docker container prune -f >/dev/null 2>&1 || true
+# Force kill all running containers
+echo "Killing running containers..."
+docker kill $(docker ps -q) 2>/dev/null || true
+echo "Done."
+
+# Force remove all containers
+echo "Removing all containers..."
+docker rm -f $(docker ps -aq) 2>/dev/null || true
+echo "Done."
+
+# Docker compose cleanup
+echo "Running docker compose cleanup..."
+if docker compose version >/dev/null 2>&1; then
+  docker compose down -v --remove-orphans 2>/dev/null || true
+elif command -v docker-compose >/dev/null 2>&1; then
+  docker-compose down -v --remove-orphans 2>/dev/null || true
+fi
+echo "Done."
+
+# Prune volumes
+echo "Pruning unused volumes..."
+docker volume prune -f 2>/dev/null || true
 echo "Done."
 echo
 
