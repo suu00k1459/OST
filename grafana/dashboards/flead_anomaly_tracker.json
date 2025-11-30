@@ -450,7 +450,7 @@
       }
     ]
   },
-  "time": { "from": "2025-11-29T08:00:00.000Z", "to": "2025-11-29T11:00:00.000Z" },
+  "time": { "from": "now-24h", "to": "now" },
   "timepicker": {
     "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"],
     "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
