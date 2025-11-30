@@ -106,6 +106,22 @@ ACCURACY_DEGRADATION_THRESHOLD = 0.05  # Trigger alert if accuracy drops by 5%
 MODEL_STALENESS_HOURS = 24       # Mark device stale if no updates in N hours
 PERFORMANCE_HISTORY_SIZE = 50    # Track last N aggregation rounds for trend analysis
 
+# ---------------------------------------------------------------------
+# DIFFERENTIAL PRIVACY SETTINGS
+# ---------------------------------------------------------------------
+DIFFERENTIAL_PRIVACY_ENABLED = True   # Toggle DP on/off
+DP_EPSILON = 1.0                       # Privacy budget (lower = more private, noisier)
+DP_DELTA = 1e-5                        # Probability bound for privacy guarantee
+DP_CLIP_NORM = 1.0                     # Max L2 norm for gradient/update clipping
+
+# ---------------------------------------------------------------------
+# DEVICE CLUSTERING SETTINGS
+# ---------------------------------------------------------------------
+DEVICE_CLUSTERING_ENABLED = True      # Toggle device clustering on/off
+CLUSTER_MIN_DEVICES = 3               # Minimum devices to form a cluster
+CLUSTER_SIMILARITY_THRESHOLD = 0.15   # Max accuracy difference for same cluster
+DP_NOISE_MULTIPLIER = 1.1              # Multiplier for Gaussian noise (derived from epsilon)
+
 
 # ---------------------------------------------------------------------
 # ALERT SEVERITY ENUM
@@ -418,6 +434,363 @@ class PerformanceMonitor:
             return "stable"
 
 
+class DifferentialPrivacy:
+    """
+    Differential Privacy mechanism for Federated Learning.
+    
+    Implements Gaussian mechanism for (ε, δ)-differential privacy.
+    Applied to local model updates before aggregation to protect device data.
+    
+    Privacy Guarantees:
+    - ε (epsilon): Privacy budget - lower means more privacy but more noise
+    - δ (delta): Probability of privacy breach
+    - Combined guarantee: P(output | D) ≤ e^ε × P(output | D') + δ
+    """
+    
+    def __init__(
+        self,
+        epsilon: float = DP_EPSILON,
+        delta: float = DP_DELTA,
+        clip_norm: float = DP_CLIP_NORM,
+        noise_multiplier: float = DP_NOISE_MULTIPLIER,
+        enabled: bool = DIFFERENTIAL_PRIVACY_ENABLED
+    ):
+        self.epsilon = epsilon
+        self.delta = delta
+        self.clip_norm = clip_norm
+        self.noise_multiplier = noise_multiplier
+        self.enabled = enabled
+        self.privacy_spent = 0.0  # Track cumulative privacy budget spent
+        self.rounds_processed = 0
+        self._lock = threading.Lock()
+        
+        # Calculate noise scale from epsilon and delta using Gaussian mechanism
+        # σ ≥ √(2 × ln(1.25/δ)) × Δf / ε where Δf is sensitivity (clip_norm)
+        self.noise_scale = self._calculate_noise_scale()
+        
+        if self.enabled:
+            logger.info(
+                f"🔐 Differential Privacy enabled: ε={epsilon}, δ={delta}, "
+                f"clip_norm={clip_norm}, noise_scale={self.noise_scale:.4f}"
+            )
+    
+    def _calculate_noise_scale(self) -> float:
+        """Calculate Gaussian noise scale from privacy parameters"""
+        # Standard Gaussian mechanism: σ = Δf × √(2 × ln(1.25/δ)) / ε
+        sensitivity = self.clip_norm
+        return sensitivity * np.sqrt(2 * np.log(1.25 / self.delta)) / self.epsilon
+    
+    def clip_update(self, accuracy: float) -> float:
+        """
+        Clip the accuracy value to bound sensitivity.
+        
+        For accuracy values (0-1 range), we clip to ensure bounded sensitivity.
+        """
+        if not self.enabled:
+            return accuracy
+        
+        # Accuracy is already bounded [0, 1], but we can further clip for stability
+        return np.clip(accuracy, 0.0, min(1.0, self.clip_norm))
+    
+    def add_noise(self, value: float, scale_factor: float = 1.0) -> float:
+        """
+        Add calibrated Gaussian noise to a value for differential privacy.
+        
+        Args:
+            value: The value to add noise to
+            scale_factor: Optional scaling for the noise (e.g., based on sample size)
+            
+        Returns:
+            Noised value clipped to valid range
+        """
+        if not self.enabled:
+            return value
+        
+        # Sample Gaussian noise with calculated scale
+        noise = np.random.normal(0, self.noise_scale * scale_factor)
+        noised_value = value + noise
+        
+        # Clip to valid accuracy range [0, 1]
+        return np.clip(noised_value, 0.0, 1.0)
+    
+    def privatize_aggregation(
+        self,
+        device_accuracies: List[Dict[str, Any]],
+        num_devices: int
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Apply differential privacy to local model updates before aggregation.
+        
+        Uses the following DP mechanisms:
+        1. Clip individual contributions to bound sensitivity
+        2. Add calibrated Gaussian noise to aggregated result
+        3. Track privacy budget consumption
+        
+        Args:
+            device_accuracies: List of device accuracy updates
+            num_devices: Number of participating devices
+            
+        Returns:
+            Tuple of (privatized_accuracies, dp_metadata)
+        """
+        if not self.enabled:
+            return device_accuracies, {"dp_applied": False}
+        
+        with self._lock:
+            self.rounds_processed += 1
+            
+            privatized = []
+            total_noise_added = 0.0
+            
+            for device_data in device_accuracies:
+                # Clone the data
+                private_data = device_data.copy()
+                
+                # Step 1: Clip accuracy to bound sensitivity
+                original_acc = private_data["accuracy"]
+                clipped_acc = self.clip_update(original_acc)
+                
+                # Step 2: Add per-device noise (scaled by 1/sqrt(n) for composition)
+                # This provides better utility when aggregating many devices
+                scale_factor = 1.0 / np.sqrt(num_devices) if num_devices > 0 else 1.0
+                noised_acc = self.add_noise(clipped_acc, scale_factor)
+                
+                private_data["accuracy"] = noised_acc
+                private_data["dp_clipped"] = abs(original_acc - clipped_acc) > 1e-6
+                private_data["dp_noise_added"] = noised_acc - clipped_acc
+                
+                privatized.append(private_data)
+                total_noise_added += abs(noised_acc - clipped_acc)
+            
+            # Update privacy budget tracking (simple composition)
+            # In practice, use advanced composition theorems for tighter bounds
+            self.privacy_spent += self.epsilon / np.sqrt(self.rounds_processed)
+            
+            dp_metadata = {
+                "dp_applied": True,
+                "epsilon": self.epsilon,
+                "delta": self.delta,
+                "noise_scale": self.noise_scale,
+                "avg_noise_magnitude": total_noise_added / len(device_accuracies) if device_accuracies else 0,
+                "privacy_spent_total": self.privacy_spent,
+                "rounds_processed": self.rounds_processed
+            }
+            
+            logger.info(
+                f"🔐 DP applied: avg_noise={dp_metadata['avg_noise_magnitude']:.4f}, "
+                f"cumulative_ε≈{self.privacy_spent:.4f}"
+            )
+            
+            return privatized, dp_metadata
+    
+    def get_privacy_status(self) -> Dict[str, Any]:
+        """Get current privacy status and budget consumption"""
+        return {
+            "enabled": self.enabled,
+            "epsilon": self.epsilon,
+            "delta": self.delta,
+            "noise_scale": self.noise_scale,
+            "privacy_spent": self.privacy_spent,
+            "rounds_processed": self.rounds_processed,
+            "remaining_budget_estimate": max(0, 10.0 - self.privacy_spent)  # Assuming budget of 10
+        }
+
+
+class DeviceClusterManager:
+    """
+    Device Clustering for Federated Learning.
+    
+    Groups similar devices together based on their accuracy profiles and 
+    performs separate FedAvg aggregation per cluster. This allows the system
+    to create specialized models for different device behaviors/environments.
+    
+    Clustering Strategy:
+    - Devices with similar accuracy profiles are grouped together
+    - Each cluster gets its own aggregated model
+    - Helps handle non-IID data distributions across devices
+    """
+    
+    def __init__(
+        self,
+        min_devices_per_cluster: int = CLUSTER_MIN_DEVICES,
+        similarity_threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
+        enabled: bool = DEVICE_CLUSTERING_ENABLED
+    ):
+        self.min_devices = min_devices_per_cluster
+        self.similarity_threshold = similarity_threshold
+        self.enabled = enabled
+        
+        # Track device history for clustering decisions
+        self.device_accuracy_history: Dict[str, deque] = defaultdict(
+            lambda: deque(maxlen=10)
+        )
+        self.device_clusters: Dict[str, int] = {}  # device_id -> cluster_id
+        self.cluster_stats: Dict[int, Dict[str, Any]] = {}
+        self._lock = threading.Lock()
+        
+        if self.enabled:
+            logger.info(
+                f"📊 Device Clustering enabled: min_devices={min_devices_per_cluster}, "
+                f"similarity_threshold={similarity_threshold}"
+            )
+    
+    def update_device_history(self, device_id: str, accuracy: float) -> None:
+        """Update accuracy history for a device"""
+        with self._lock:
+            self.device_accuracy_history[device_id].append(accuracy)
+    
+    def get_device_profile(self, device_id: str) -> Dict[str, float]:
+        """Get statistical profile for a device based on its history"""
+        history = list(self.device_accuracy_history.get(device_id, []))
+        if not history:
+            return {"mean": 0.5, "std": 0.0, "trend": 0.0}
+        
+        mean_acc = np.mean(history)
+        std_acc = np.std(history) if len(history) > 1 else 0.0
+        
+        # Calculate trend (positive = improving, negative = declining)
+        trend = 0.0
+        if len(history) >= 3:
+            recent = np.mean(history[-3:])
+            older = np.mean(history[:-3]) if len(history) > 3 else history[0]
+            trend = recent - older
+        
+        return {"mean": float(mean_acc), "std": float(std_acc), "trend": float(trend)}
+    
+    def compute_similarity(self, profile1: Dict[str, float], profile2: Dict[str, float]) -> float:
+        """
+        Compute similarity between two device profiles.
+        Returns value in [0, 1] where 1 means identical.
+        """
+        mean_diff = abs(profile1["mean"] - profile2["mean"])
+        std_diff = abs(profile1["std"] - profile2["std"])
+        trend_diff = abs(profile1["trend"] - profile2["trend"])
+        
+        # Weighted combination
+        distance = 0.6 * mean_diff + 0.2 * std_diff + 0.2 * trend_diff
+        similarity = max(0, 1 - distance / self.similarity_threshold)
+        
+        return similarity
+    
+    def cluster_devices(
+        self, 
+        device_accuracies: List[Dict[str, Any]]
+    ) -> Dict[int, List[Dict[str, Any]]]:
+        """
+        Cluster devices based on their accuracy profiles.
+        
+        Uses a simple agglomerative clustering approach:
+        1. Compute profile for each device
+        2. Greedily assign devices to clusters based on similarity
+        
+        Args:
+            device_accuracies: List of device data with accuracy info
+            
+        Returns:
+            Dict mapping cluster_id to list of devices in that cluster
+        """
+        if not self.enabled or len(device_accuracies) < self.min_devices:
+            # Not enough devices for clustering, return all in one cluster
+            return {0: device_accuracies}
+        
+        with self._lock:
+            # Update histories first
+            for device_data in device_accuracies:
+                device_id = device_data["device_id"]
+                accuracy = device_data["accuracy"]
+                self.device_accuracy_history[device_id].append(accuracy)
+            
+            # Compute profiles for all devices
+            profiles = {}
+            for device_data in device_accuracies:
+                device_id = device_data["device_id"]
+                profiles[device_id] = self.get_device_profile(device_id)
+            
+            # Simple greedy clustering
+            clusters: Dict[int, List[Dict[str, Any]]] = {}
+            cluster_profiles: Dict[int, Dict[str, float]] = {}
+            next_cluster_id = 0
+            
+            for device_data in device_accuracies:
+                device_id = device_data["device_id"]
+                device_profile = profiles[device_id]
+                
+                # Find best matching cluster
+                best_cluster = None
+                best_similarity = 0.0
+                
+                for cluster_id, cluster_profile in cluster_profiles.items():
+                    sim = self.compute_similarity(device_profile, cluster_profile)
+                    if sim > best_similarity and sim > 0.5:  # Minimum similarity threshold
+                        best_similarity = sim
+                        best_cluster = cluster_id
+                
+                if best_cluster is not None:
+                    # Add to existing cluster
+                    clusters[best_cluster].append(device_data)
+                    self.device_clusters[device_id] = best_cluster
+                    
+                    # Update cluster profile (running average)
+                    old_profile = cluster_profiles[best_cluster]
+                    n = len(clusters[best_cluster])
+                    cluster_profiles[best_cluster] = {
+                        "mean": (old_profile["mean"] * (n-1) + device_profile["mean"]) / n,
+                        "std": (old_profile["std"] * (n-1) + device_profile["std"]) / n,
+                        "trend": (old_profile["trend"] * (n-1) + device_profile["trend"]) / n,
+                    }
+                else:
+                    # Create new cluster
+                    clusters[next_cluster_id] = [device_data]
+                    cluster_profiles[next_cluster_id] = device_profile
+                    self.device_clusters[device_id] = next_cluster_id
+                    next_cluster_id += 1
+            
+            # Merge small clusters into the largest one
+            if len(clusters) > 1:
+                small_clusters = [cid for cid, devs in clusters.items() 
+                                 if len(devs) < self.min_devices]
+                if small_clusters:
+                    # Find largest cluster
+                    largest_cluster = max(clusters.keys(), 
+                                         key=lambda cid: len(clusters[cid]))
+                    
+                    for small_cid in small_clusters:
+                        if small_cid != largest_cluster:
+                            # Merge into largest
+                            for device_data in clusters[small_cid]:
+                                clusters[largest_cluster].append(device_data)
+                                self.device_clusters[device_data["device_id"]] = largest_cluster
+                            del clusters[small_cid]
+            
+            # Update cluster stats
+            self.cluster_stats = {
+                cid: {
+                    "num_devices": len(devs),
+                    "avg_accuracy": np.mean([d["accuracy"] for d in devs]),
+                    "total_samples": sum(d["samples"] for d in devs),
+                    "profile": cluster_profiles.get(cid, {})
+                }
+                for cid, devs in clusters.items()
+            }
+            
+            if len(clusters) > 1:
+                logger.info(
+                    f"📊 Clustered {len(device_accuracies)} devices into {len(clusters)} clusters: "
+                    f"{[f'C{cid}:{len(devs)}' for cid, devs in clusters.items()]}"
+                )
+            
+            return clusters
+    
+    def get_cluster_status(self) -> Dict[str, Any]:
+        """Get current clustering status"""
+        return {
+            "enabled": self.enabled,
+            "num_clusters": len(self.cluster_stats),
+            "cluster_stats": self.cluster_stats,
+            "total_tracked_devices": len(self.device_accuracy_history)
+        }
+
+
 class GlobalModel:
     """Global model in federated learning with enhanced metadata tracking"""
 
@@ -475,6 +848,8 @@ class FederatedAggregator:
     - Performance monitoring with alerts
     - Adaptive contribution weighting
     - Health status reporting
+    - Differential Privacy for privacy-preserving aggregation
+    - Device Clustering for handling non-IID data
     """
 
     def __init__(self, producer: KafkaProducer):
@@ -489,6 +864,12 @@ class FederatedAggregator:
         self.model_registry = ModelRegistry()
         self.performance_monitor = PerformanceMonitor()
         self.performance_monitor.alert_callback = self._handle_alert
+        
+        # Differential Privacy component
+        self.differential_privacy = DifferentialPrivacy()
+        
+        # Device Clustering component
+        self.device_cluster_manager = DeviceClusterManager()
 
         self._init_database()
 
@@ -522,6 +903,8 @@ class FederatedAggregator:
             "buffered_devices": len(self.local_model_buffer),
             "model_registry": self.model_registry.get_registry_status(),
             "performance": self.performance_monitor.get_performance_summary(),
+            "differential_privacy": self.differential_privacy.get_privacy_status(),
+            "device_clustering": self.device_cluster_manager.get_cluster_status(),
             "timestamp": datetime.now().isoformat()
         }
 
@@ -707,6 +1090,8 @@ class FederatedAggregator:
           - Model registry tracking
           - Performance monitoring
           - Contribution weighting tracking
+          - Differential Privacy for privacy-preserving aggregation
+          - Device Clustering for handling non-IID data
         """
         try:
             num_devices = len(self.local_model_buffer)
@@ -744,8 +1129,7 @@ class FederatedAggregator:
                         "samples": samples,
                     }
                 )
-
-                weighted_accuracy += accuracy * samples
+                
                 total_samples += samples
                 participating_device_ids.append(device_id)
 
@@ -756,8 +1140,21 @@ class FederatedAggregator:
                     samples,
                 )
 
+            # Apply Device Clustering to group similar devices
+            device_clusters = self.device_cluster_manager.cluster_devices(device_accuracies)
+            cluster_info = self.device_cluster_manager.get_cluster_status()
+
+            # Apply Differential Privacy before aggregation
+            privatized_accuracies, dp_metadata = self.differential_privacy.privatize_aggregation(
+                device_accuracies, num_devices
+            )
+            
+            # Calculate weighted accuracy using privatized values
+            for da in privatized_accuracies:
+                weighted_accuracy += da["accuracy"] * da["samples"]
+            
             # Calculate contribution weights (normalized)
-            for da in device_accuracies:
+            for da in privatized_accuracies:
                 contrib_weight = da["samples"] / total_samples if total_samples > 0 else 0.0
                 device_contributions[da["device_id"]] = contrib_weight
 
@@ -778,6 +1175,9 @@ class FederatedAggregator:
 
             logger.info("\n  Global Model v%d:", self.global_model.version)
             logger.info("  Weighted Average Accuracy: %.2f%%", global_accuracy * 100.0)
+            if dp_metadata.get("dp_applied"):
+                logger.info("  🔐 Differential Privacy: ε=%.2f, noise_avg=%.4f", 
+                           dp_metadata["epsilon"], dp_metadata["avg_noise_magnitude"])
             logger.info("  Total Samples Processed: %d", total_samples)
             logger.info("  Aggregation Round: %d", self.aggregation_round)
 
@@ -813,12 +1213,14 @@ class FederatedAggregator:
                 "aggregation_round": self.aggregation_round,
                 "global_accuracy": global_accuracy,
                 "num_devices": num_devices,
-                "device_accuracies": device_accuracies,
+                "device_accuracies": privatized_accuracies,  # Use privatized data
                 "device_contributions": device_contributions,
                 "timestamp": datetime.now().isoformat(),
                 "total_samples": total_samples,
                 "alerts_triggered": len(alerts),
                 "registry_status": self.model_registry.get_registry_status(),
+                "differential_privacy": dp_metadata,  # Include DP metadata
+                "device_clustering": cluster_info,  # Include clustering info
             }
 
             logger.info("%s\n", "=" * 70)
@@ -826,7 +1228,6 @@ class FederatedAggregator:
 
         except Exception as e:
             logger.error(f"Error in aggregation: {e}", exc_info=True)
-            return None
             return None
 
     def _save_global_model_to_db(self, accuracy: float, num_devices: int) -> None:

@@ -576,6 +576,159 @@ def health_check():
 
 
 # --------------------------------------------------------------------
+# Prometheus Metrics Endpoint
+# --------------------------------------------------------------------
+@app.route("/metrics")
+def prometheus_metrics():
+    """
+    Expose FLEAD pipeline metrics in Prometheus format.
+    This allows Prometheus to scrape pipeline health metrics.
+    """
+    metrics = []
+    
+    # Get database stats
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            
+            # Total IoT records
+            cur.execute("SELECT COUNT(*) FROM iot_data")
+            iot_count = cur.fetchone()[0] or 0
+            metrics.append(f"flead_iot_records_total {iot_count}")
+            
+            # Total local models
+            cur.execute("SELECT COUNT(*) FROM local_models")
+            local_models = cur.fetchone()[0] or 0
+            metrics.append(f"flead_local_models_total {local_models}")
+            
+            # Total federated models
+            cur.execute("SELECT COUNT(*) FROM federated_models")
+            federated_models = cur.fetchone()[0] or 0
+            metrics.append(f"flead_federated_models_total {federated_models}")
+            
+            # Latest global model accuracy
+            cur.execute("""
+                SELECT accuracy FROM federated_models 
+                ORDER BY created_at DESC LIMIT 1
+            """)
+            result = cur.fetchone()
+            accuracy = result[0] if result else 0
+            metrics.append(f"flead_global_model_accuracy {accuracy}")
+            
+            # Total anomalies
+            cur.execute("SELECT COUNT(*) FROM anomalies")
+            anomalies = cur.fetchone()[0] or 0
+            metrics.append(f"flead_anomalies_total {anomalies}")
+            
+            # Anomaly rate (last hour)
+            cur.execute("""
+                SELECT 
+                    COUNT(*) FILTER (WHERE severity IN ('medium', 'high', 'critical')) * 1.0 / 
+                    NULLIF(COUNT(*), 0)
+                FROM anomalies 
+                WHERE detected_at > NOW() - INTERVAL '1 hour'
+            """)
+            result = cur.fetchone()
+            anomaly_rate = result[0] if result and result[0] else 0
+            metrics.append(f"flead_anomaly_rate {anomaly_rate}")
+            
+            # Active devices (last 5 minutes)
+            cur.execute("""
+                SELECT COUNT(DISTINCT device_id) FROM iot_data 
+                WHERE timestamp > NOW() - INTERVAL '5 minutes'
+            """)
+            active_devices = cur.fetchone()[0] or 0
+            metrics.append(f"flead_active_devices {active_devices}")
+            
+            # Stale devices (no data in last hour)
+            cur.execute("""
+                SELECT COUNT(DISTINCT device_id) FROM local_models 
+                WHERE device_id NOT IN (
+                    SELECT DISTINCT device_id FROM iot_data 
+                    WHERE timestamp > NOW() - INTERVAL '1 hour'
+                )
+            """)
+            stale_devices = cur.fetchone()[0] or 0
+            metrics.append(f"flead_stale_devices_count {stale_devices}")
+            
+            # Models per minute (last 5 min)
+            cur.execute("""
+                SELECT COUNT(*) / 5.0 FROM local_models 
+                WHERE created_at > NOW() - INTERVAL '5 minutes'
+            """)
+            result = cur.fetchone()
+            models_per_min = result[0] if result else 0
+            metrics.append(f"flead_models_per_minute {models_per_min}")
+            
+            # Unique devices with models
+            cur.execute("SELECT COUNT(DISTINCT device_id) FROM local_models")
+            unique_devices = cur.fetchone()[0] or 0
+            metrics.append(f"flead_devices_with_models {unique_devices}")
+            
+            cur.close()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error getting metrics: {e}")
+            if conn:
+                conn.close()
+    
+    # Add metadata
+    metrics.insert(0, "# HELP flead_iot_records_total Total IoT data records in TimescaleDB")
+    metrics.insert(1, "# TYPE flead_iot_records_total counter")
+    metrics.insert(3, "# HELP flead_local_models_total Total local models trained")
+    metrics.insert(4, "# TYPE flead_local_models_total counter")
+    metrics.insert(6, "# HELP flead_federated_models_total Total federated global models")
+    metrics.insert(7, "# TYPE flead_federated_models_total counter")
+    metrics.insert(9, "# HELP flead_global_model_accuracy Current global model accuracy")
+    metrics.insert(10, "# TYPE flead_global_model_accuracy gauge")
+    
+    return "\n".join(metrics), 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+
+# --------------------------------------------------------------------
+# Alert Receiver Endpoint (for Alertmanager webhooks)
+# --------------------------------------------------------------------
+RECEIVED_ALERTS = []
+
+@app.route("/api/alerts", methods=["POST"])
+def receive_alerts():
+    """
+    Receive alerts from Alertmanager.
+    Stores them in memory for display on dashboard.
+    """
+    from flask import request
+    try:
+        data = request.get_json()
+        if data:
+            for alert in data.get("alerts", []):
+                alert_entry = {
+                    "timestamp": datetime.now().isoformat(),
+                    "status": alert.get("status", "unknown"),
+                    "alertname": alert.get("labels", {}).get("alertname", "unknown"),
+                    "severity": alert.get("labels", {}).get("severity", "info"),
+                    "component": alert.get("labels", {}).get("component", "unknown"),
+                    "summary": alert.get("annotations", {}).get("summary", ""),
+                    "description": alert.get("annotations", {}).get("description", ""),
+                }
+                RECEIVED_ALERTS.append(alert_entry)
+                # Keep only last 100 alerts
+                if len(RECEIVED_ALERTS) > 100:
+                    RECEIVED_ALERTS.pop(0)
+                logger.info(f"Alert received: {alert_entry['alertname']} ({alert_entry['severity']})")
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        logger.error(f"Error receiving alert: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/alerts", methods=["GET"])
+def get_alerts():
+    """Get recent alerts received from Alertmanager."""
+    return jsonify({"alerts": RECEIVED_ALERTS[-50:]})  # Return last 50
+
+
+# --------------------------------------------------------------------
 # Main entry point
 # --------------------------------------------------------------------
 if __name__ == "__main__":

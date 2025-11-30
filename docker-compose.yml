@@ -247,6 +247,12 @@ services:
       - models_global:/app/models/global
     networks:
       - flead_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/json/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
       kafka-broker-1:
         condition: service_started
@@ -265,11 +271,17 @@ services:
       - spark_worker_data:/opt/spark/work
     depends_on:
       spark-master:
-        condition: service_started
+        condition: service_healthy
     networks:
       - flead_network
     ports:
       - "8087:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/json/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # -------------------------------------------------
   # 5) KAFKA UI
@@ -340,6 +352,12 @@ services:
     networks:
       - flead_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost', 9092)); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
   # -------------------------------------------------
   # 7b) SPARK ANALYTICS – DASHBOARD METRICS UPDATER
@@ -464,6 +482,50 @@ services:
       - flead_network
     restart: "no"
 
+  # -------------------------------------------------
+  # 11) PROMETHEUS (Metrics Collection)
+  # -------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=7d'
+    networks:
+      - flead_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # -------------------------------------------------
+  # 12) ALERTMANAGER (Alert Notifications)
+  # -------------------------------------------------
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - flead_network
+    restart: unless-stopped
+
 # ---------------------------------------------------
 # Networks & volumes
 # ---------------------------------------------------
@@ -480,3 +542,4 @@ volumes:
   spark_worker_data:
   grafana_data:
   models_global:
+  prometheus_data:

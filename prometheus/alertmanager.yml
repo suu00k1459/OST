@@ -1,0 +1,79 @@
+# Alertmanager Configuration for FLEAD Pipeline
+# Routes alerts to appropriate channels (console, webhook, email, slack)
+
+global:
+  # Default settings
+  resolve_timeout: 5m
+
+# Route tree for alert routing
+route:
+  # Default receiver
+  receiver: 'console-notifications'
+  
+  # Group alerts by these labels
+  group_by: ['alertname', 'component', 'severity']
+  
+  # Wait before sending first notification for a new group
+  group_wait: 30s
+  
+  # Wait before sending notification about new alerts in existing group
+  group_interval: 5m
+  
+  # Wait before re-sending a notification
+  repeat_interval: 4h
+
+  # Child routes for specific alert types
+  routes:
+    # Critical alerts - notify immediately
+    - match:
+        severity: critical
+      receiver: 'console-notifications'
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # Federated learning alerts
+    - match:
+        component: federated-learning
+      receiver: 'console-notifications'
+      group_wait: 1m
+
+    # Anomaly detection alerts
+    - match:
+        component: anomaly-detection
+      receiver: 'console-notifications'
+
+# Receivers define where alerts are sent
+receivers:
+  # Console/log notifications (default for development)
+  - name: 'console-notifications'
+    webhook_configs:
+      - url: 'http://monitoring-dashboard:5001/api/alerts'
+        send_resolved: true
+
+  # Slack notifications (configure with your webhook URL)
+  # - name: 'slack-notifications'
+  #   slack_configs:
+  #     - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+  #       channel: '#flead-alerts'
+  #       title: '{{ .GroupLabels.alertname }}'
+  #       text: "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}"
+  #       send_resolved: true
+
+  # Email notifications (configure with your SMTP settings)
+  # - name: 'email-notifications'
+  #   email_configs:
+  #     - to: 'team@example.com'
+  #       from: 'flead-alerts@example.com'
+  #       smarthost: 'smtp.example.com:587'
+  #       auth_username: 'alerter@example.com'
+  #       auth_password: 'password'
+  #       send_resolved: true
+
+# Inhibition rules to suppress redundant alerts
+inhibit_rules:
+  # If critical alert fires, suppress warning for same component
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'component']

@@ -1,0 +1,119 @@
+# FLEAD Pipeline Alert Rules
+# Monitors model accuracy, pipeline health, and system resources
+
+groups:
+  - name: flead_pipeline_alerts
+    interval: 30s
+    rules:
+      # Model Accuracy Degradation Alert
+      - alert: ModelAccuracyDegradation
+        expr: flead_global_model_accuracy < 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: federated-learning
+        annotations:
+          summary: "Global model accuracy below 50%"
+          description: "The federated global model accuracy has dropped to {{ $value | printf \"%.2f\" }}. Consider investigating device contributions or data quality."
+
+      # Model Accuracy Critical
+      - alert: ModelAccuracyCritical
+        expr: flead_global_model_accuracy < 0.3
+        for: 2m
+        labels:
+          severity: critical
+          component: federated-learning
+        annotations:
+          summary: "CRITICAL: Global model accuracy critically low"
+          description: "Global model accuracy is {{ $value | printf \"%.2f\" }}. Immediate investigation required."
+
+      # High Anomaly Rate Alert
+      - alert: HighAnomalyRate
+        expr: flead_anomaly_rate > 0.15
+        for: 5m
+        labels:
+          severity: warning
+          component: anomaly-detection
+        annotations:
+          summary: "Anomaly rate above 15%"
+          description: "Anomaly detection rate is {{ $value | printf \"%.2f\" }}. This may indicate sensor issues or a real problem."
+
+      # Low Training Rate Alert
+      - alert: LowTrainingRate
+        expr: rate(flead_local_models_total[5m]) < 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: flink-training
+        annotations:
+          summary: "Low local model training rate"
+          description: "Local model training rate has dropped to {{ $value | printf \"%.2f\" }} models/minute."
+
+      # No New Federated Models
+      - alert: NoFederatedModels
+        expr: increase(flead_federated_models_total[30m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+          component: federated-aggregation
+        annotations:
+          summary: "No new federated models in 30 minutes"
+          description: "The federated aggregator has not produced new global models. Check aggregator health."
+
+      # Stale Devices Alert
+      - alert: StaleDevices
+        expr: flead_stale_devices_count > 100
+        for: 15m
+        labels:
+          severity: warning
+          component: data-pipeline
+        annotations:
+          summary: "Many devices are stale"
+          description: "{{ $value }} devices have not sent data recently. Check Kafka producer and data flow."
+
+      # Flink Job Failed
+      - alert: FlinkJobFailed
+        expr: flink_jobmanager_job_uptime < 60
+        for: 2m
+        labels:
+          severity: critical
+          component: flink
+        annotations:
+          summary: "Flink job may have restarted or failed"
+          description: "Flink job uptime is very low, indicating recent restart or failure."
+
+      # Database Connection Issues
+      - alert: DatabaseConnectionIssues
+        expr: flead_db_connection_errors > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: timescaledb
+        annotations:
+          summary: "Database connection errors detected"
+          description: "{{ $value }} database connection errors in the last 5 minutes."
+
+  - name: system_alerts
+    interval: 60s
+    rules:
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 90% on {{ $labels.instance }}."
+
+      # Container Restart
+      - alert: ContainerRestarting
+        expr: increase(container_restart_count[1h]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          component: docker
+        annotations:
+          summary: "Container restarting frequently"
+          description: "Container {{ $labels.name }} has restarted {{ $value }} times in the last hour."

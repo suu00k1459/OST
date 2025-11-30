@@ -1,0 +1,56 @@
+# Prometheus Configuration for FLEAD Pipeline
+# Collects metrics from Kafka, Flink, Spark, and custom pipeline metrics
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'flead-pipeline'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Load alert rules
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Flink JobManager metrics
+  - job_name: 'flink-jobmanager'
+    static_configs:
+      - targets: ['flink-jobmanager:8081']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # Spark Master metrics (via REST API scraping)
+  - job_name: 'spark-master'
+    static_configs:
+      - targets: ['spark-master:8080']
+    metrics_path: /metrics/master/prometheus
+    scrape_interval: 15s
+    # Fallback - Spark may not expose Prometheus metrics by default
+    # We'll use the custom metrics exporter instead
+
+  # TimescaleDB/PostgreSQL metrics (via pg_exporter if added)
+  # For now, we'll rely on dashboard_metrics table queries
+
+  # Custom FLEAD Pipeline Metrics (from monitoring-dashboard)
+  - job_name: 'flead-pipeline'
+    static_configs:
+      - targets: ['monitoring-dashboard:5001']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # Kafka metrics (JMX if exposed)
+  # Note: Confluent Kafka doesn't expose Prometheus metrics by default
+  # You could add kafka_exporter container for detailed metrics

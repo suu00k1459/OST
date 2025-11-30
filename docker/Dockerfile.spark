@@ -25,6 +25,16 @@ RUN mkdir -p /opt/spark/work \
     && chown -R spark:spark /opt/spark/work /home/spark/.ivy2 \
     && chmod 777 /opt/spark/work
 
+# Pre-download Kafka connector dependencies at build time
+# This prevents runtime download failures and speeds up job submission
+RUN /opt/spark/bin/spark-submit \
+    --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
+    --class org.apache.spark.examples.SparkPi \
+    --master local[1] \
+    /opt/spark/examples/jars/spark-examples_2.12-3.5.0.jar 1 2>/dev/null || true \
+    && cp -r /root/.ivy2/* /home/spark/.ivy2/ 2>/dev/null || true \
+    && chown -R spark:spark /home/spark/.ivy2
+
 # Switch back to spark user
 USER spark
 
