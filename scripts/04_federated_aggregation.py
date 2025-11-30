@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import sys
+import shutil
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
@@ -225,7 +226,8 @@ class ModelRegistry:
             # Archive the model file instead of deleting
             if model_version.file_path and model_version.file_path.exists():
                 archive_path = MODEL_ARCHIVE_DIR / model_version.file_path.name
-                model_version.file_path.rename(archive_path)
+                # Use shutil.move for cross-device compatibility (Docker volumes)
+                shutil.move(str(model_version.file_path), str(archive_path))
                 logger.info(f"📦 Archived model v{v} to {archive_path}")
 
     def get_version(self, version: int) -> Optional[ModelVersion]:

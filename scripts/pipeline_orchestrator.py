@@ -207,10 +207,20 @@ def run_python_step_blocking(description: str, script_path: Path) -> None:
         sys.exit(result.returncode)
 
 
-def start_spark_analytics_nonblocking(description: str, script_path: Path) -> None:
+def start_spark_analytics_nonblocking(
+    description: str, script_path: Path, max_retries: int = 3, retry_delay: int = 15
+) -> None:
     """
     Start Spark analytics script as a long-running host process (non-blocking).
     Submit the job from inside the spark-master container to avoid host PySpark deps.
+    
+    Includes retry logic to handle transient Maven download failures.
+    
+    Args:
+        description: Human-readable description for logging
+        script_path: Path to the Spark analytics script
+        max_retries: Maximum number of submission attempts (default: 3)
+        retry_delay: Seconds to wait between retries (default: 15)
     """
     logger.info("=" * 70)
     logger.info("Starting: %s", description)
@@ -239,23 +249,65 @@ def start_spark_analytics_nonblocking(description: str, script_path: Path) -> No
     ]
 
     submit_log = LOGS_DIR / "spark_analytics_submit.log"
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
-        submit_log.write_text(
-            f"CMD: {' '.join(cmd)}\nRET: {result.returncode}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}\n"
-        )
-        if result.returncode == 0:
-            logger.info("  Submitted Spark analytics via spark-master (script: %s)", target_path)
-            logger.info("  Check docker compose logs spark-master/spark-worker-1 for status.")
-        else:
-            logger.error("Spark analytics submission failed (see %s)", submit_log)
-    except Exception as e:
-        logger.error("Failed to submit Spark analytics job: %s", e)
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info("  Spark submit attempt %d/%d...", attempt, max_retries)
+            result = subprocess.run(
+                cmd,
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            
+            # Log this attempt
+            log_entry = (
+                f"=== Attempt {attempt}/{max_retries} ===\n"
+                f"CMD: {' '.join(cmd)}\n"
+                f"RET: {result.returncode}\n"
+                f"STDOUT:\n{result.stdout}\n"
+                f"STDERR:\n{result.stderr}\n\n"
+            )
+            # Append to log file
+            with open(submit_log, "a") as f:
+                f.write(log_entry)
+            
+            if result.returncode == 0:
+                logger.info("  ✓ Submitted Spark analytics via spark-master (script: %s)", target_path)
+                logger.info("  Check docker compose logs spark-master/spark-worker-1 for status.")
+                return  # Success - exit retry loop
+            
+            # Check if it's a transient Maven/download error (worth retrying)
+            stderr_lower = result.stderr.lower()
+            is_transient = any(
+                err in stderr_lower
+                for err in ["download failed", "content length", "please retry", "connection", "timeout"]
+            )
+            
+            if is_transient and attempt < max_retries:
+                logger.warning(
+                    "  Spark submit failed (transient error), retrying in %ds... (attempt %d/%d)",
+                    retry_delay, attempt, max_retries
+                )
+                # Clear corrupted Ivy cache before retry
+                subprocess.run(
+                    ["docker", "exec", "spark-master", "rm", "-rf", "/root/.ivy2/cache/org.apache.hadoop"],
+                    capture_output=True,
+                )
+                time.sleep(retry_delay)
+            elif attempt < max_retries:
+                logger.warning(
+                    "  Spark submit failed, retrying in %ds... (attempt %d/%d)",
+                    retry_delay, attempt, max_retries
+                )
+                time.sleep(retry_delay)
+            else:
+                logger.error("Spark analytics submission failed after %d attempts (see %s)", max_retries, submit_log)
+                
+        except Exception as e:
+            logger.error("Failed to submit Spark analytics job (attempt %d): %s", attempt, e)
+            if attempt < max_retries:
+                time.sleep(retry_delay)
 
 
 def _wait_for_flink_rest_api(timeout: int = 120, interval: int = 5) -> bool:
@@ -294,13 +346,19 @@ def _wait_for_flink_rest_api(timeout: int = 120, interval: int = 5) -> bool:
     return False
 
 
-def submit_flink_local_training_job() -> None:
+def submit_flink_local_training_job(max_retries: int = 3, retry_delay: int = 10) -> None:
     """
     Submit the Flink local training job to the JobManager via docker exec.
 
     This mirrors the manual command you've been using:
       docker exec -it flink-jobmanager \
         flink run -d -py /opt/flink/scripts/03_flink_local_training.py
+    
+    Includes retry logic to handle transient failures during Flink startup.
+    
+    Args:
+        max_retries: Maximum number of submission attempts (default: 3)
+        retry_delay: Seconds to wait between retries (default: 10)
     """
     logger.info("=" * 70)
     logger.info("Starting: Flink Local Model Training (Real-time Streaming)")
@@ -321,18 +379,54 @@ def submit_flink_local_training_job() -> None:
     if not _wait_for_flink_rest_api(timeout=180, interval=5):
         logger.warning("Flink REST API not ready after 180s, attempting job submission anyway...")
     
-    logger.info("  Submitting Flink job...")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    flink_log = LOGS_DIR / "flink_job_submit.log"
+    
+    for attempt in range(1, max_retries + 1):
+        logger.info("  Flink submit attempt %d/%d...", attempt, max_retries)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # Log this attempt
+        log_entry = (
+            f"=== Attempt {attempt}/{max_retries} ===\n"
+            f"CMD: {' '.join(cmd)}\n"
+            f"RET: {result.returncode}\n"
+            f"STDOUT:\n{result.stdout}\n"
+            f"STDERR:\n{result.stderr}\n\n"
+        )
+        with open(flink_log, "a") as f:
+            f.write(log_entry)
 
-    if result.returncode != 0:
-        logger.error("Flink job submission failed!")
-        logger.error("STDOUT:\n%s", result.stdout)
-        logger.error("STDERR:\n%s", result.stderr)
-        sys.exit(result.returncode)
-
-    logger.info("Service completed successfully")
-    if result.stdout.strip():
-        logger.info("Flink submission output:\n%s", result.stdout.strip())
+        if result.returncode == 0:
+            logger.info("  ✓ Flink job submitted successfully")
+            if result.stdout.strip():
+                logger.info("Flink submission output:\n%s", result.stdout.strip())
+            break  # Success
+        else:
+            # Check if worth retrying
+            stderr_lower = result.stderr.lower()
+            is_transient = any(
+                err in stderr_lower
+                for err in ["connection refused", "not ready", "timeout", "actor system", "unreachable"]
+            )
+            
+            if attempt < max_retries:
+                if is_transient:
+                    logger.warning(
+                        "  Flink submit failed (transient error), retrying in %ds...",
+                        retry_delay
+                    )
+                else:
+                    logger.warning(
+                        "  Flink submit failed, retrying in %ds...",
+                        retry_delay
+                    )
+                time.sleep(retry_delay)
+            else:
+                logger.error("Flink job submission failed after %d attempts!", max_retries)
+                logger.error("STDOUT:\n%s", result.stdout)
+                logger.error("STDERR:\n%s", result.stderr)
+                logger.error("See %s for full details", flink_log)
+                sys.exit(result.returncode)
 
     # Optional: show current jobs
     try:

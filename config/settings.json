@@ -52,10 +52,11 @@
         "performance_history_size": 50
     },
     "timescaledb": {
-        "host": "localhost",
+        "_note": "Actual values loaded from config_loader.py with Docker auto-detection",
+        "host": "timescaledb",
         "port": 5432,
-        "database": "iot_timescale",
-        "user": "postgres",
-        "password": "postgres"
+        "database": "flead",
+        "user": "flead",
+        "password": "password"
     }
 }

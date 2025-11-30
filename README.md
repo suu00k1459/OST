@@ -12,11 +12,10 @@ The system uses a single Kafka broker for development and lightweight local depl
 
 All components run in Docker containers with no local Python dependencies required. The Kafka producer script (`02_kafka_producer.py`) automatically:
 
-1. Discovers and loads all 2400 device CSV files from data/processed/
-2. Maps devices to brokers using device_id modulo 4
-3. Connects to all 4 bootstrap servers simultaneously
-4. Streams messages randomly across all devices at a configurable rate
-5. Routes each message to its assigned broker partition
+1. Discovers and loads all device CSV files from data/processed/
+2. Connects to the single Kafka broker
+3. Streams messages across all devices at a configurable rate
+4. Publishes to `edge-iiot-stream` topic
 
 This approach eliminates NumPy compilation issues on Windows and ensures identical deployment across Windows, macOS, and Linux.
 
@@ -264,13 +263,13 @@ This project uses complete containerization to avoid common deployment issues:
 
 **Custom Images (built during startup)**
 
--   `ost-2-kafka-producer:latest` - Multi-broker producer
--   `ost-2-flink-jobmanager:latest` - Flink coordinator
--   `ost-2-flink-taskmanager:latest` - Flink worker
--   `ost-2-spark-master:latest` - Spark coordinator
--   `ost-2-spark-worker-1:latest` - Spark executor
--   `ost-2-aggregator:latest` - Federated aggregation
- -   `ost-2-data-preprocessor:latest` - Kaggle downloader & preprocessing
+-   `ost-kafka-producer:latest` - Kafka producer
+-   `ost-flink-jobmanager:latest` - Flink coordinator
+-   `ost-flink-taskmanager:latest` - Flink worker
+-   `ost-spark-master:latest` - Spark coordinator
+-   `ost-spark-worker-1:latest` - Spark executor
+-   `ost-federated-aggregator:latest` - Federated aggregation
+-   `ost-data-preprocessor:latest` - Kaggle downloader & preprocessing
 
 **Pre-built Images (from Docker Hub)**
 
@@ -292,18 +291,22 @@ All containers connected via Docker bridge network `flead_network`:
 
 **External Access** (from host machine)
 
--   Kafka: localhost:9092
+-   Kafka: localhost:9092 (also 29092)
 -   TimescaleDB: localhost:5432
 -   Grafana: localhost:3001
 -   Kafka UI: localhost:8081
 -   Flink UI: localhost:8161
--   Spark UI: localhost:8086
+-   Spark Master UI: localhost:8086
+-   Spark Worker UI: localhost:8087
+-   Device Viewer: localhost:8082
+-   Monitoring Dashboard: localhost:5001
+-   Jupyter Lab: localhost:8888
 
 ### Volume Mounting
 
 **Data Volumes** (persistent storage)
 
--   kafka_broker_1_data, kafka_broker_2_data, kafka_broker_3_data, kafka_broker_4_data
+-   kafka_broker_1_data
 -   timescaledb_data
 
 **Code Volumes** (host machine)

@@ -19,8 +19,10 @@ COPY requirements/spark.txt requirements.txt
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Create work directory with proper permissions for Spark
+# Also create Ivy cache for Maven dependencies download
 RUN mkdir -p /opt/spark/work \
-    && chown -R spark:spark /opt/spark/work \
+    && mkdir -p /home/spark/.ivy2/cache /home/spark/.ivy2/jars \
+    && chown -R spark:spark /opt/spark/work /home/spark/.ivy2 \
     && chmod 777 /opt/spark/work
 
 # Switch back to spark user

@@ -79,7 +79,6 @@ WINDOW_SIZE_SECONDS = 30
 # RCF anomaly score threshold (0-1 scale, higher = more anomalous)
 # Base threshold - will be adjusted adaptively per device
 BASE_ANOMALY_THRESHOLD = 0.4
-ANOMALY_SCORE_THRESHOLD = 0.4  # Default, kept for backward compatibility
 MODEL_TRAINING_INTERVAL_ROWS = 30   # Train model every 30 rows per device (optimized from 50)
 MODEL_TRAINING_INTERVAL_SECONDS = 45  # OR every 45 seconds (optimized from 60)
 
@@ -712,7 +711,7 @@ class AnomalyDetectionFunction(MapFunction):
             if self.threshold_manager:
                 threshold = self.threshold_manager.get_threshold(device_id)
             else:
-                threshold = ANOMALY_SCORE_THRESHOLD
+                threshold = BASE_ANOMALY_THRESHOLD
 
             # Check if anomaly (score > threshold)
             is_anomaly = anomaly_score > threshold
@@ -762,7 +761,7 @@ class AnomalyDetectionFunction(MapFunction):
                 stats["last_training_time"] = datetime.now().timestamp()
 
                 # Use current threshold for training labels
-                training_threshold = threshold if self.threshold_manager else ANOMALY_SCORE_THRESHOLD
+                training_threshold = threshold if self.threshold_manager else BASE_ANOMALY_THRESHOLD
 
                 if len(stats["values"]) >= 2:
                     X_train = []

@@ -9,49 +9,45 @@ FLEAD (Federated Learning for Edge Anomaly Detection) is a distributed machine l
 ### The Problem We're Solving:
 
 -   Traditional ML: All data to central server, one model (Privacy risk, bandwidth waste)
--   FLEAD: Each device trains locally on independent broker, only model updates sent, central aggregation
--   Multi-Broker Benefit: 93% bandwidth reduction, privacy preserved, real-time detection, fault tolerance
+-   FLEAD: Each device trains locally, only model updates sent, central aggregation
+-   Benefits: 93% bandwidth reduction, privacy preserved, real-time detection
 
 ### System Statistics:
 
--   Devices: 2,407 IoT sensors distributed across 4 brokers (600 per broker)
--   Data Points: 31,000+ messages/minute distributed across 4 independent Kafka brokers
--   Brokers: 4 independent Kafka brokers with replication factor 3
--   Model Versions: 70+ global models created through FedAvg
--   Average Accuracy: 72.7% (anomaly detection)
+-   Devices: 2,407 IoT sensors streaming to single Kafka broker
+-   Data Points: Continuous streaming at ~7 messages/second
+-   Brokers: Single Kafka broker in KRaft mode (no Zookeeper)
+-   Model Versions: Global models created through FedAvg
+-   Anomaly Detection: Random Cut Forest (RCF) based
 
 ---
 
 ## ARCHITECTURE DIAGRAM
 
-Multi-Broker Kafka Cluster:
+Single-Broker Kafka Configuration:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                 FLEAD FEDERATED LEARNING WITH MULTI-BROKER KAFKA            │
+│                 FLEAD FEDERATED LEARNING WITH SINGLE-BROKER KAFKA           │
 └─────────────────────────────────────────────────────────────────────────────┘
 
                      ┌──────────────────────────────┐
                      │    2407 IoT Devices          │
-                     │  (2400 preprocessed CSV)     │
+                     │  (preprocessed CSV files)    │
                      └──────────────┬───────────────┘
                                     │
-              ┌─────────────────────┴─────────────────────┐
-              │                                           │
-              ▼                                           ▼
-    ┌──────────────────────────────┐    ┌──────────────────────────────┐
-    │     KAFKA MULTI-BROKER       │    │   DEVICE DISTRIBUTION        │
-    │     (4 Independent Brokers)  │    │   (devices modulo 4)         │
-    │                              │    │                              │
-    │ Broker 1: Port 9092          │    │ Broker 1: device_0-2399      │
-    │                              │    │                              │
-    │ KRaft Mode (no Zookeeper)    │    │ 600 devices per broker       │
-    │ Replication Factor: 3        │    │ Replicated across 3 brokers  │
-    │ Bootstrap Servers:           │    │                              │
+                                    ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │               KAFKA SINGLE-BROKER (KRaft Mode)               │
+    │                                                              │
+    │  Broker 1: Port 9092 (internal), 29092 (external)            │
+    │  Topics: edge-iiot-stream, anomalies, local-model-updates,   │
+    │          global-model-updates                                │
+    └──────────────────────────────┬───────────────────────────────┘
     │ broker-1:9092                │    │                              │
     └──────────┬───────────────────┘    └──────────────────────────────┘
                │
-   Topics: edge-iiot-stream (replicated across all brokers)
+   Topics: edge-iiot-stream (replicated across the broker)
            anomalies (Flink detections)
            local-model-updates (device models)
            global-model-updates (FedAvg results)
@@ -60,14 +56,14 @@ Multi-Broker Kafka Cluster:
     │                     │              │              │
     ▼                     ▼              ▼              ▼
 ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ FLINK ALL    │  │ FLINK ALL    │  │ SPARK ALL    │  │ SPARK ALL    │
-│ BROKERS      │  │ BROKERS      │  │ BROKERS      │  │ BROKERS      │
+│ FLINK        │  │ FLINK        │  │ SPARK        │  │ SPARK        │
+│              │  │              │  │              │  │              │
 │ (JobManager) │  │ (TaskManager)│  │ (Master)     │  │ (Worker)     │
 │              │  │              │  │              │  │              │
 │ Consumes:    │  │ Processes:   │  │ Reads:       │  │ Executes:    │
-│ All 4        │  │ Streaming    │  │ All 4        │  │ Batch        │
-│ brokers      │  │ data from    │  │ brokers      │  │ analytics    │
-│              │  │ all brokers  │  │              │  │ on all data  │
+│ Kafka        │  │ Streaming    │  │ Kafka        │  │ Batch        │
+│ stream       │  │ data from    │  │ stream       │  │ analytics    │
+│              │  │ the broker   │  │              │  │ on all data  │
 │ Real-time:   │  │              │  │ Batch:       │  │              │
 │ - Z-score    │  │ Per-device   │  │ Hourly       │  │ Distributed  │
 │   anomaly    │  │ local SGD    │  │ - Trends     │  │ computation  │
@@ -89,12 +85,12 @@ Multi-Broker Kafka Cluster:
        │                 ▼                 │                 │
        │  ┌──────────────────────────────┐ │                 │
        │  │ FEDERATED AGGREGATION        │ │                 │
-       │  │ (FedAvg from all brokers)    │ │                 │
+       │  │ (FedAvg from the broker)    │ │                 │
        │  │                              │ │                 │
        │  │ Consumes: local-model-       │ │                 │
        │  │           updates from ALL   │ │                 │
        │  │           devices across     │ │                 │
-       │  │           4 brokers          │ │                 │
+       │  │           single broker          │ │                 │
        │  │                              │ │                 │
        │  │ Buffer: 20 device updates    │ │                 │
        │  │ Aggregate: Weighted average  │ │                 │
@@ -114,7 +110,7 @@ Multi-Broker Kafka Cluster:
     │     Persistent Storage for All Components               │
     │                                                         │
     │  Tables:                                                │
-    │  ├─ local_models (11,247 from all 4 brokers)            │
+    │  ├─ local_models (11,247 from all single broker)            │
     │  │  └─ device_id, model_version, accuracy, samples      │
     │  │                                                      │
     │  ├─ federated_models (70+ global versions)              │
@@ -123,7 +119,7 @@ Multi-Broker Kafka Cluster:
     │  ├─ model_evaluations (Spark evaluation results)        │
     │  │  └─ global_version, prediction_result, accuracy      │
     │  │                                                      │
-    │  └─ anomalies (Flink RCF detections from all brokers)   │
+    │  └─ anomalies (Flink RCF detections from the broker)   │
     │     └─ device_id, value, anomaly_score, severity        │
     └──────────────────────┬──────────────────────────────────┘
                            │
@@ -144,14 +140,14 @@ Multi-Broker Kafka Cluster:
                 └──────────────────────┘
 ```
 
-### Key Multi-Broker Features:
+### Key single-broker Features:
 
-1. Device Distribution: Each device permanently assigned to one broker (device_id modulo 4)
-2. Data Streams: 4 independent, parallel data streams through 4 brokers
+1. Device Distribution: Each device permanently assigned to one broker (single broker routing)
+2. Data Streams: 4 independent, parallel data streams through single broker
 3. Fault Tolerance: Replication factor 3 means data survives broker failures
-4. Load Balancing: 600 devices per broker (equal distribution)
+4. Load Balancing: all devices on single broker (equal distribution)
 5. Scalability: Easy to add more brokers for more devices
-6. Consumer Access: All consumers (Flink, Spark, Aggregator) connect to all 4 brokers
+6. Consumer Access: All consumers (Flink, Spark, Aggregator) connect to all single broker
    │ │ │
    ▼ ▼ ▼
    ┌────────────────┐ ┌─────────────┐ ┌──────────────────┐
@@ -227,25 +223,25 @@ Multi-Broker Kafka Cluster:
 
 ## COMPONENT DEEP DIVE
 
-### KAFKA: MULTI-BROKER MESSAGE CLUSTER
+### KAFKA: single-broker MESSAGE CLUSTER
 
-**Role:** Central nervous system with 4 independent brokers - routes data between all components
+**Role:** Central nervous system with single broker - routes data between all components
 
-**Architecture: 4-Broker KRaft Cluster**
+**Architecture: Single-Broker KRaft Cluster**
 
 - Broker 1 (Port 9092): devices_0-2399 (single broker)
 
 **What it does:**
 
-- Receives raw IoT sensor data from 2,407 devices (31,000+ msgs/minute distributed across 4 brokers)
+- Receives raw IoT sensor data from 2,407 devices (31,000+ msgs/minute distributed across single broker)
 - Routes messages to correct broker based on device_id
 - Buffers data in replicated topics so components can process independently
 - Guarantees no data loss with replication factor 3 (3 brokers hold each message)
 
-**Multi-Broker Benefits:**
+**single-broker Benefits:**
 
 1. Fault Tolerance: If one broker fails, 2 backups available
-2. Load Balancing: 600 devices per broker (equal distribution)
+2. Load Balancing: all devices on single broker (equal distribution)
 3. Scalability: Easy to add more brokers for growth
 4. Realistic Simulation: Matches enterprise IoT deployments
 5. Independent Streams: Each broker processes subset independently
@@ -262,9 +258,9 @@ Device 1800-2399 → Broker 4 ─┤─ local-model-updates
 │
 ┌───────────────┬───────────┼──────────┐
 ▼ ▼ ▼ ▼
-Flink consumes from ALL brokers
-Spark consumes from ALL brokers
-Aggregator consumes from ALL brokers
+Flink consumes from the broker
+Spark consumes from the broker
+Aggregator consumes from the broker
 
 ```
 
@@ -273,8 +269,8 @@ Aggregator consumes from ALL brokers
 | Topic                  | Producer              | Consumers             | Purpose                            | Replication |
 | ---------------------- | --------------------- | --------------------- | ---------------------------------- | ----------- |
 | `edge-iiot-stream`     | Kafka Producer        | Flink, Spark          | Raw sensor data from all devices   | Factor 3    |
-| `anomalies`            | Flink (all brokers)   | Storage, Monitoring   | Detected anomalies (Z-score > 2.5) | Factor 3    |
-| `local-model-updates`  | Flink (all brokers)   | Federated Aggregation | Local model accuracies per device  | Factor 3    |
+| `anomalies`            | Flink (the broker)   | Storage, Monitoring   | Detected anomalies (Z-score > 2.5) | Factor 3    |
+| `local-model-updates`  | Flink (the broker)   | Federated Aggregation | Local model accuracies per device  | Factor 3    |
 | `global-model-updates` | Federated Aggregation | Spark                 | New global model versions          | Factor 3    |
 
 **Deployment:** Docker containers - 4 Kafka brokers in KRaft mode (no Zookeeper needed)
@@ -283,13 +279,13 @@ Aggregator consumes from ALL brokers
 
 ### FLINK: REAL-TIME TRAINING
 
-**Role:** Trains 2,407 local models in parallel on streaming data from all 4 brokers
+**Role:** Trains 2,407 local models in parallel on streaming data from all single broker
 
 **What it does:**
 
 ```
 
-For each IoT device (independently across all 4 brokers):
+For each IoT device (independently across all single broker):
 
 1. Collects streaming measurements from assigned broker
 2. Calculates statistics (mean, std)
@@ -301,14 +297,14 @@ For each IoT device (independently across all 4 brokers):
 
 ````
 
-**Multi-Broker Processing:**
+**single-broker Processing:**
 
-- JobManager: Connects to all 4 brokers' bootstrap servers
-- TaskManager: Processes stream from all 4 brokers in parallel
+- JobManager: Connects to all single broker' bootstrap servers
+- TaskManager: Processes stream from all single broker in parallel
 - Each device maintained independently (v1, v2, v3... per device)
 - Models trained at different rates (faster devices create more versions)
 
-**Health:** Flink components depend on all 4 brokers being healthy before starting
+**Health:** Flink components depend on all single broker being healthy before starting
 
 ```python
 # Random Cut Forest (RCF) anomaly detection
@@ -452,24 +448,24 @@ Minute 20: Device 2010 trains, publishes v1 → Buffer size = 20
 
 ---
 
-### SPARK: ANALYTICS & EVALUATION (Multi-Broker)
+### SPARK: ANALYTICS & EVALUATION (single-broker)
 
-**Role:** Evaluates global models on real data from all 4 brokers
+**Role:** Evaluates global models on real data from all single broker
 
-**Multi-Broker Design:**
+**single-broker Design:**
 
--   Master: Connects to all 4 broker bootstrap servers
--   Workers: Process data from all brokers in parallel
--   Batch Jobs: Read complete dataset across all 4 brokers
+-   Master: Connects to all single broker bootstrap servers
+-   Workers: Process data from the broker in parallel
+-   Batch Jobs: Read complete dataset across all single broker
 -   Stream Evaluation: Test models on data from all devices
 
 **Spark Batch Analytics (hourly):**
 
 ```
 Every 1 hour:
-  1. Read all streaming data from all 4 Kafka brokers
-  2. Analyze patterns and trends across 2400 devices
-  3. Calculate statistics (avg, std, anomaly rate per broker)
+  1. Read all streaming data from Kafka broker
+  2. Analyze patterns and trends across devices
+  3. Calculate statistics (avg, std, anomaly rate)
   4. Store in TimescaleDB for reporting
 ```
 
@@ -478,14 +474,14 @@ Every 1 hour:
 ```
 For each global model version (v1, v2, v3... v70):
   1. Download model weights from TimescaleDB
-  2. Stream new IoT data from all 4 brokers through model
+  2. Stream new IoT data from all single broker through model
   3. Get predictions: "Is this anomalous?"
   4. Compare to actual labels
   5. Calculate REAL accuracy: ✓ correct / ✗ incorrect (weighted by broker)
   6. Store results in model_evaluations table
 ```
 
-**Health:** Spark components depend on all 4 brokers being healthy before starting
+**Health:** Spark components depend on all single broker being healthy before starting
 
 **Example Evaluation:**
 
@@ -1326,3 +1322,5 @@ Grafana (visualizes)
 ---
 
 **Good luck with your defense! You've built something genuinely impressive.** 🚀
+
+

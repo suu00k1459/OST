@@ -91,7 +91,7 @@ These run in strict order during normal operation:
 -   **Critical**: NO (but increases system effectiveness)
 -   **Background**: YES (runs continuously)
 
-#### Stage 5: `05_spark_analytics_professional.py`
+#### Stage 5: `05_spark_analytics.py`
 
 -   **Purpose**: Batch and stream analytics with global model evaluation
 -   **When**: Runs after aggregation service is ready
@@ -176,7 +176,7 @@ TimescaleDB (raw data storage)
 Global Model
     |
     v
-05_spark_analytics_professional.py
+05_spark_analytics.py
     |
     +---> batch_analysis_results
     +---> stream_analysis_results
@@ -239,7 +239,7 @@ python 03_flink_local_training.py &
 python 04_federated_aggregation.py &
 
 # Step 5: Start analytics (in background)
-python 05_spark_analytics_professional.py &
+python 05_spark_analytics.py &
 ```
 
 ---
@@ -262,7 +262,7 @@ python 05_spark_analytics_professional.py &
     depends on: 03_flink_local_training.py
     requires: TimescaleDB, models directory
 
-05_spark_analytics_professional.py
+05_spark_analytics.py
     depends on: 04_federated_aggregation.py
     requires: Spark cluster, TimescaleDB, global model
 ```
@@ -304,28 +304,28 @@ docker logs -f kafka_producer
 
 ### Data Not Flowing
 
-1. Check Kafka topics exist: `docker exec kafka kafka-topics --bootstrap-server localhost:29092 --list`
-2. Check producer is running: `docker logs kafka_producer`
-3. Check Kafka has data: `docker exec kafka kafka-console-consumer --bootstrap-server localhost:29092 --topic edge-iiot-stream --from-beginning --max-messages 5`
+1. Check Kafka topics exist: `docker exec kafka-broker-1 kafka-topics --bootstrap-server localhost:9092 --list`
+2. Check producer is running: `docker logs kafka-producer`
+3. Check Kafka has data: `docker exec kafka-broker-1 kafka-console-consumer --bootstrap-server localhost:9092 --topic edge-iiot-stream --from-beginning --max-messages 5`
 
 ### Analytics Not Showing
 
 1. Wait 2-3 minutes for data to flow through pipeline
-2. Check TimescaleDB tables: `docker exec timescaledb psql -U postgres -d flead_db -c "SELECT COUNT(*) FROM stream_analysis_results;"`
+2. Check TimescaleDB tables: `docker exec timescaledb psql -U flead -d flead -c "SELECT COUNT(*) FROM iot_data;"`
 3. Check Grafana dashboard: http://localhost:3001 (admin/admin)
 
 ### Model Accuracy Low
 
 1. Check global model loaded: Check logs in `spark_analytics.log`
 2. Wait for more data: Model improves as it sees more patterns
-3. Check model version: `docker exec timescaledb psql -U postgres -d flead_db -c "SELECT DISTINCT model_version FROM model_evaluations;"`
+3. Check model version: `docker exec timescaledb psql -U flead -d flead -c "SELECT DISTINCT version FROM federated_models;"`
 
 ---
 
 ## Performance Tips
 
 1. **Increase Data Rate**: Edit `02_kafka_producer.py`, change `rate` parameter (default: 5 events/sec)
-2. **Adjust Batch Size**: Edit `05_spark_analytics_professional.py`, modify `BATCH_SIZE` constant
+2. **Adjust Batch Size**: Edit `05_spark_analytics.py`, modify `BATCH_SIZE` constant
 3. **Scale Devices**: Add more CSV files to `data/processed/` directory
 4. **Monitoring**: Check system resources during peak loads
 
@@ -406,7 +406,7 @@ VISUALIZATION LAYER
 | `02_kafka_producer.py`               | 2nd   | Pipeline | YES      | YES        |
 | `03_flink_local_training.py`         | 3rd   | Pipeline | NO       | YES        |
 | `04_federated_aggregation.py`        | 4th   | Pipeline | NO       | YES        |
-| `05_spark_analytics_professional.py` | 5th   | Pipeline | NO       | YES        |
+| `05_spark_analytics.py` | 5th   | Pipeline | NO       | YES        |
 
 ---
 
