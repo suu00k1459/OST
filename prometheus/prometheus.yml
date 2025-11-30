@@ -25,19 +25,23 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # Flink JobManager metrics
-  - job_name: 'flink-jobmanager'
-    static_configs:
-      - targets: ['flink-jobmanager:8081']
-    metrics_path: /metrics
-    scrape_interval: 10s
+  # Flink JobManager metrics (Flink REST API requires a custom exporter)
+  # The /jobs endpoint provides job information but not Prometheus format
+  # Uncomment if you add flink-metrics-prometheus dependency
+  # - job_name: 'flink-jobmanager'
+  #   static_configs:
+  #     - targets: ['flink-jobmanager:9249']  # Prometheus exporter port
+  #   scrape_interval: 10s
 
-  # Spark Master metrics (via REST API scraping)
-  - job_name: 'spark-master'
-    static_configs:
-      - targets: ['spark-master:8080']
-    metrics_path: /metrics/master/prometheus
-    scrape_interval: 15s
+  # Spark Master metrics
+  # Note: Spark 3.x doesn't expose /metrics/master/prometheus by default
+  # You need spark.metrics.conf with PrometheusServlet or use JMX exporter
+  # Uncomment if you enable Prometheus servlet in Spark
+  # - job_name: 'spark-master'
+  #   static_configs:
+  #     - targets: ['spark-master:8080']
+  #   metrics_path: /metrics/master/prometheus
+  #   scrape_interval: 15s
     # Fallback - Spark may not expose Prometheus metrics by default
     # We'll use the custom metrics exporter instead
 
@@ -47,7 +51,7 @@ scrape_configs:
   # Custom FLEAD Pipeline Metrics (from monitoring-dashboard)
   - job_name: 'flead-pipeline'
     static_configs:
-      - targets: ['monitoring-dashboard:5001']
+      - targets: ['monitoring-dashboard:5000']  # Internal port (5001 is host-mapped)
     metrics_path: /metrics
     scrape_interval: 10s
 
