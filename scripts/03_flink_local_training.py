@@ -77,10 +77,21 @@ MODEL_UPDATE_TOPIC = "local-model-updates"
 
 WINDOW_SIZE_SECONDS = 30
 # RCF anomaly score threshold (0-1 scale, higher = more anomalous)
-# 0.5 is a good default, lower = more sensitive
-ANOMALY_SCORE_THRESHOLD = 0.4
+# Base threshold - will be adjusted adaptively per device
+BASE_ANOMALY_THRESHOLD = 0.4
+ANOMALY_SCORE_THRESHOLD = 0.4  # Default, kept for backward compatibility
 MODEL_TRAINING_INTERVAL_ROWS = 30   # Train model every 30 rows per device (optimized from 50)
 MODEL_TRAINING_INTERVAL_SECONDS = 45  # OR every 45 seconds (optimized from 60)
+
+# -------------------------------------------------------------------
+# Adaptive Threshold Configuration
+# -------------------------------------------------------------------
+ADAPTIVE_THRESHOLD_ENABLED = True
+THRESHOLD_ADAPTATION_WINDOW = 100   # Number of samples to consider for adaptation
+MIN_THRESHOLD = 0.2                 # Minimum allowed threshold
+MAX_THRESHOLD = 0.8                 # Maximum allowed threshold
+TARGET_ANOMALY_RATE = 0.05          # Target 5% anomaly rate for balanced detection
+THRESHOLD_ADJUSTMENT_FACTOR = 0.02  # How much to adjust per adaptation
 
 # -------------------------------------------------------------------
 # Random Cut Forest Configuration
@@ -398,10 +409,172 @@ class SGDModelTrainer:
             return False
 
 
+# -------------------------------------------------------------------
+# Adaptive Threshold Manager
+# -------------------------------------------------------------------
+class AdaptiveThresholdManager:
+    """
+    Manages adaptive anomaly thresholds per device.
+    
+    Adjusts thresholds based on:
+    - Historical anomaly rates
+    - Score distribution
+    - Target anomaly rate
+    
+    This helps balance between:
+    - Too many false positives (threshold too low)
+    - Missing real anomalies (threshold too high)
+    """
+
+    def __init__(
+        self,
+        base_threshold: float = BASE_ANOMALY_THRESHOLD,
+        target_rate: float = TARGET_ANOMALY_RATE,
+        window_size: int = THRESHOLD_ADAPTATION_WINDOW
+    ):
+        self.base_threshold = base_threshold
+        self.target_rate = target_rate
+        self.window_size = window_size
+        
+        # Per-device tracking
+        self.device_thresholds: Dict[str, float] = {}
+        self.device_scores: Dict[str, List[float]] = defaultdict(list)
+        self.device_anomaly_counts: Dict[str, int] = defaultdict(int)
+        self.device_total_counts: Dict[str, int] = defaultdict(int)
+        self.adaptation_history: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+    def get_threshold(self, device_id: str) -> float:
+        """Get the current threshold for a device"""
+        if device_id not in self.device_thresholds:
+            self.device_thresholds[device_id] = self.base_threshold
+        return self.device_thresholds[device_id]
+
+    def update(self, device_id: str, score: float, is_anomaly: bool) -> float:
+        """
+        Update threshold based on new score and return current threshold.
+        
+        Returns:
+            The updated threshold for this device
+        """
+        # Initialize if needed
+        if device_id not in self.device_thresholds:
+            self.device_thresholds[device_id] = self.base_threshold
+
+        # Track score
+        self.device_scores[device_id].append(score)
+        if len(self.device_scores[device_id]) > self.window_size:
+            self.device_scores[device_id].pop(0)
+
+        # Track counts
+        self.device_total_counts[device_id] += 1
+        if is_anomaly:
+            self.device_anomaly_counts[device_id] += 1
+
+        # Adapt threshold periodically
+        if self.device_total_counts[device_id] % (self.window_size // 2) == 0:
+            self._adapt_threshold(device_id)
+
+        return self.device_thresholds[device_id]
+
+    def _adapt_threshold(self, device_id: str) -> None:
+        """Adapt threshold based on recent anomaly rate"""
+        scores = self.device_scores[device_id]
+        if len(scores) < 20:
+            return
+
+        current_threshold = self.device_thresholds[device_id]
+        
+        # Calculate current anomaly rate in the window
+        anomalies_in_window = sum(1 for s in scores if s > current_threshold)
+        current_rate = anomalies_in_window / len(scores)
+
+        # Calculate new threshold
+        new_threshold = current_threshold
+        
+        if current_rate > self.target_rate * 1.5:
+            # Too many anomalies, raise threshold
+            new_threshold += THRESHOLD_ADJUSTMENT_FACTOR
+        elif current_rate < self.target_rate * 0.5:
+            # Too few anomalies, lower threshold
+            new_threshold -= THRESHOLD_ADJUSTMENT_FACTOR
+
+        # Clamp to valid range
+        new_threshold = max(MIN_THRESHOLD, min(MAX_THRESHOLD, new_threshold))
+
+        # Only update if change is significant
+        if abs(new_threshold - current_threshold) > 0.005:
+            old_threshold = current_threshold
+            self.device_thresholds[device_id] = new_threshold
+            
+            # Log adaptation
+            adaptation_event = {
+                "timestamp": datetime.now().isoformat(),
+                "old_threshold": old_threshold,
+                "new_threshold": new_threshold,
+                "current_rate": current_rate,
+                "target_rate": self.target_rate,
+                "window_size": len(scores)
+            }
+            self.adaptation_history[device_id].append(adaptation_event)
+            
+            # Keep only last 20 adaptations
+            if len(self.adaptation_history[device_id]) > 20:
+                self.adaptation_history[device_id].pop(0)
+            
+            logger.debug(
+                f"📊 Threshold adapted for {device_id}: "
+                f"{old_threshold:.3f} → {new_threshold:.3f} "
+                f"(rate: {current_rate:.2%} → target: {self.target_rate:.2%})"
+            )
+
+    def get_stats(self, device_id: str) -> Dict[str, Any]:
+        """Get threshold stats for a device"""
+        scores = self.device_scores.get(device_id, [])
+        threshold = self.device_thresholds.get(device_id, self.base_threshold)
+        
+        return {
+            "device_id": device_id,
+            "current_threshold": threshold,
+            "base_threshold": self.base_threshold,
+            "scores_tracked": len(scores),
+            "score_mean": float(np.mean(scores)) if scores else 0.0,
+            "score_std": float(np.std(scores)) if scores else 0.0,
+            "total_samples": self.device_total_counts.get(device_id, 0),
+            "total_anomalies": self.device_anomaly_counts.get(device_id, 0),
+            "anomaly_rate": (
+                self.device_anomaly_counts.get(device_id, 0) / 
+                max(1, self.device_total_counts.get(device_id, 1))
+            ),
+            "adaptations": len(self.adaptation_history.get(device_id, []))
+        }
+
+    def get_all_stats(self) -> Dict[str, Any]:
+        """Get aggregate stats across all devices"""
+        all_thresholds = list(self.device_thresholds.values())
+        total_samples = sum(self.device_total_counts.values())
+        total_anomalies = sum(self.device_anomaly_counts.values())
+        
+        return {
+            "num_devices": len(self.device_thresholds),
+            "avg_threshold": float(np.mean(all_thresholds)) if all_thresholds else self.base_threshold,
+            "min_threshold": float(np.min(all_thresholds)) if all_thresholds else self.base_threshold,
+            "max_threshold": float(np.max(all_thresholds)) if all_thresholds else self.base_threshold,
+            "total_samples": total_samples,
+            "total_anomalies": total_anomalies,
+            "overall_anomaly_rate": total_anomalies / max(1, total_samples),
+            "target_rate": self.target_rate
+        }
+
+
 class AnomalyDetectionFunction(MapFunction):
     """
     Flink MapFunction for real-time anomaly detection using Random Cut Forest
     and local model training using SGD.
+    
+    Enhanced with:
+    - Adaptive thresholds per device
+    - Performance tracking
+    - Data quality monitoring
     """
 
     def __init__(self):
@@ -430,6 +603,53 @@ class AnomalyDetectionFunction(MapFunction):
             )
         )
         self.anomaly_count = 0
+        
+        # New: Adaptive threshold manager
+        self.threshold_manager = AdaptiveThresholdManager() if ADAPTIVE_THRESHOLD_ENABLED else None
+        
+        # New: Data quality tracking
+        self.data_quality_stats = defaultdict(
+            lambda: {
+                "null_count": 0,
+                "out_of_range_count": 0,
+                "duplicate_count": 0,
+                "last_values": [],
+            }
+        )
+
+    def _check_data_quality(self, device_id: str, value: float) -> Dict[str, Any]:
+        """Check data quality and track issues"""
+        quality_stats = self.data_quality_stats[device_id]
+        issues = []
+        
+        # Check for NaN or Inf
+        if np.isnan(value) or np.isinf(value):
+            quality_stats["null_count"] += 1
+            issues.append("invalid_value")
+        
+        # Check for out of expected range (simple heuristic)
+        if len(self.device_stats[device_id]["values"]) > 10:
+            mean = self.device_stats[device_id]["mean"]
+            std = self.device_stats[device_id]["std"]
+            if std > 0 and abs(value - mean) > 10 * std:
+                quality_stats["out_of_range_count"] += 1
+                issues.append("extreme_value")
+        
+        # Check for repeated values (stuck sensor)
+        quality_stats["last_values"].append(value)
+        if len(quality_stats["last_values"]) > 10:
+            quality_stats["last_values"].pop(0)
+        
+        if len(quality_stats["last_values"]) >= 5:
+            if len(set(quality_stats["last_values"][-5:])) == 1:
+                quality_stats["duplicate_count"] += 1
+                issues.append("stuck_sensor")
+        
+        return {
+            "has_issues": len(issues) > 0,
+            "issues": issues,
+            "quality_score": 1.0 - (len(issues) * 0.25)
+        }
 
     def should_train_model(self, device_id: str) -> bool:
         """
@@ -456,6 +676,13 @@ class AnomalyDetectionFunction(MapFunction):
 
             results = {"anomalies": [], "models": []}
 
+            # New: Check data quality
+            quality_check = self._check_data_quality(device_id, value)
+            if quality_check["has_issues"] and "invalid_value" in quality_check["issues"]:
+                # Skip invalid values
+                logger.warning(f"⚠️ Invalid value from {device_id}: {value}")
+                return json.dumps(results)
+
             # Update device statistics
             stats = self.device_stats[device_id]
             stats["values"].append(value)
@@ -481,14 +708,27 @@ class AnomalyDetectionFunction(MapFunction):
             if len(stats["anomaly_scores"]) > 100:
                 stats["anomaly_scores"].pop(0)
 
+            # Get threshold (adaptive or static)
+            if self.threshold_manager:
+                threshold = self.threshold_manager.get_threshold(device_id)
+            else:
+                threshold = ANOMALY_SCORE_THRESHOLD
+
             # Check if anomaly (score > threshold)
-            if anomaly_score > ANOMALY_SCORE_THRESHOLD:
+            is_anomaly = anomaly_score > threshold
+            
+            # Update adaptive threshold manager
+            if self.threshold_manager:
+                self.threshold_manager.update(device_id, anomaly_score, is_anomaly)
+            
+            if is_anomaly:
                 self.anomaly_count += 1
                 
-                # Determine severity based on score
-                if anomaly_score > 0.8:
+                # Determine severity based on score (relative to threshold)
+                score_margin = anomaly_score - threshold
+                if score_margin > 0.3 or anomaly_score > 0.8:
                     severity = "critical"
-                elif anomaly_score > 0.6:
+                elif score_margin > 0.15 or anomaly_score > 0.6:
                     severity = "warning"
                 else:
                     severity = "info"
@@ -497,7 +737,9 @@ class AnomalyDetectionFunction(MapFunction):
                     "device_id": device_id,
                     "value": value,
                     "anomaly_score": float(anomaly_score),
+                    "threshold": float(threshold),
                     "severity": severity,
+                    "quality_score": quality_check["quality_score"],
                     "detection_method": "random_cut_forest",
                     "timestamp": datetime.now().isoformat(),
                 }
@@ -505,7 +747,7 @@ class AnomalyDetectionFunction(MapFunction):
                 
                 logger.info(
                     f"🚨 ANOMALY [{severity.upper()}] device={device_id} "
-                    f"value={value:.2f} score={anomaly_score:.3f}"
+                    f"value={value:.2f} score={anomaly_score:.3f} threshold={threshold:.3f}"
                 )
 
             # ============================================================
@@ -518,6 +760,9 @@ class AnomalyDetectionFunction(MapFunction):
                 # Reset counters
                 stats["samples"] = 0
                 stats["last_training_time"] = datetime.now().timestamp()
+
+                # Use current threshold for training labels
+                training_threshold = threshold if self.threshold_manager else ANOMALY_SCORE_THRESHOLD
 
                 if len(stats["values"]) >= 2:
                     X_train = []
@@ -535,8 +780,8 @@ class AnomalyDetectionFunction(MapFunction):
                         features = np.array([stats["mean"], stats["std"], norm_val])
                         X_train.append(features)
 
-                        # Label: 1 if anomaly score was high, else 0
-                        label = 1 if score > ANOMALY_SCORE_THRESHOLD else 0
+                        # Label: 1 if anomaly score was high, else 0 (using adaptive threshold)
+                        label = 1 if score > training_threshold else 0
                         y_train.append(label)
 
                     X_train = np.array(X_train)
@@ -550,10 +795,16 @@ class AnomalyDetectionFunction(MapFunction):
 
                     trainer.save_model(model["version"])
 
+                    # Include threshold info in log
+                    threshold_info = ""
+                    if self.threshold_manager:
+                        threshold_stats = self.threshold_manager.get_stats(device_id)
+                        threshold_info = f", Threshold: {threshold_stats['current_threshold']:.3f}"
+
                     logger.info(
                         f"Device {device_id}: v{model['version']} "
                         f"- Accuracy: {accuracy:.2%}, Loss: {loss:.4f}, "
-                        f"Updates: {trainer.n_updates}"
+                        f"Updates: {trainer.n_updates}{threshold_info}"
                     )
                 else:
                     accuracy = 0.5

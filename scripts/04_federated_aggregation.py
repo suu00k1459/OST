@@ -7,6 +7,13 @@ Subscribes to: local-model-updates topic
 Publishes to: global-model-updates topic
 Stores to: TimescaleDB (federated_models & local_models tables)
 
+Enhanced Features:
+- Model Version Registry with rollback capability
+- Performance tracking with accuracy degradation detection
+- Adaptive contribution weighting
+- Model staleness detection
+- Health monitoring with alerts
+
 Automatically detects if running inside Docker or locally
 """
 from kafka.errors import NoBrokersAvailable
@@ -15,12 +22,15 @@ import json
 import logging
 import os
 import sys
-from typing import Dict, List, Any
-from datetime import datetime
-from collections import defaultdict
+from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime, timedelta
+from collections import defaultdict, deque
 from pathlib import Path
+from dataclasses import dataclass, field
+from enum import Enum
 import pickle
 import time
+import threading
 
 import numpy as np
 from kafka import KafkaConsumer, KafkaProducer
@@ -77,8 +87,9 @@ logger.info(
 MODELS_DIR = Path("models")
 LOCAL_MODELS_DIR = MODELS_DIR / "local"
 GLOBAL_MODELS_DIR = MODELS_DIR / "global"
+MODEL_ARCHIVE_DIR = MODELS_DIR / "archive"
 
-for d in [MODELS_DIR, LOCAL_MODELS_DIR, GLOBAL_MODELS_DIR]:
+for d in [MODELS_DIR, LOCAL_MODELS_DIR, GLOBAL_MODELS_DIR, MODEL_ARCHIVE_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------
@@ -88,9 +99,325 @@ AGGREGATION_WINDOW = 15          # Aggregate every 15 local model updates (optim
 MIN_DEVICES_FOR_AGGREGATION = 2  # Minimum devices needed
 FEDAVG_LEARNING_RATE = 0.1       # (placeholder, not used for numeric weights here)
 
+# New: Model versioning and health monitoring settings
+MAX_MODEL_VERSIONS_KEPT = 10     # Keep last N model versions for rollback
+ACCURACY_DEGRADATION_THRESHOLD = 0.05  # Trigger alert if accuracy drops by 5%
+MODEL_STALENESS_HOURS = 24       # Mark device stale if no updates in N hours
+PERFORMANCE_HISTORY_SIZE = 50    # Track last N aggregation rounds for trend analysis
+
+
+# ---------------------------------------------------------------------
+# ALERT SEVERITY ENUM
+# ---------------------------------------------------------------------
+class AlertSeverity(Enum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+@dataclass
+class Alert:
+    """Represents a system alert"""
+    timestamp: datetime
+    severity: AlertSeverity
+    category: str
+    message: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "timestamp": self.timestamp.isoformat(),
+            "severity": self.severity.value,
+            "category": self.category,
+            "message": self.message,
+            "metadata": self.metadata
+        }
+
+
+@dataclass
+class ModelVersion:
+    """Represents a historical model version for registry"""
+    version: int
+    accuracy: float
+    num_devices: int
+    aggregation_round: int
+    created_at: datetime
+    file_path: Optional[Path] = None
+    is_active: bool = False
+    rolled_back_from: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "version": self.version,
+            "accuracy": self.accuracy,
+            "num_devices": self.num_devices,
+            "aggregation_round": self.aggregation_round,
+            "created_at": self.created_at.isoformat(),
+            "file_path": str(self.file_path) if self.file_path else None,
+            "is_active": self.is_active,
+            "rolled_back_from": self.rolled_back_from
+        }
+
+
+class ModelRegistry:
+    """
+    Registry for tracking model versions with rollback capability.
+    Stores model metadata and provides version management.
+    """
+
+    def __init__(self, max_versions: int = MAX_MODEL_VERSIONS_KEPT):
+        self.versions: Dict[int, ModelVersion] = {}
+        self.max_versions = max_versions
+        self.current_version: int = 0
+        self.best_version: int = 0
+        self.best_accuracy: float = 0.0
+        self._lock = threading.Lock()
+
+    def register_model(
+        self,
+        version: int,
+        accuracy: float,
+        num_devices: int,
+        aggregation_round: int,
+        file_path: Optional[Path] = None
+    ) -> ModelVersion:
+        """Register a new model version in the registry"""
+        with self._lock:
+            model_version = ModelVersion(
+                version=version,
+                accuracy=accuracy,
+                num_devices=num_devices,
+                aggregation_round=aggregation_round,
+                created_at=datetime.now(),
+                file_path=file_path,
+                is_active=True
+            )
+
+            # Deactivate previous version
+            if self.current_version in self.versions:
+                self.versions[self.current_version].is_active = False
+
+            self.versions[version] = model_version
+            self.current_version = version
+
+            # Track best model
+            if accuracy > self.best_accuracy:
+                self.best_accuracy = accuracy
+                self.best_version = version
+                logger.info(f"🏆 New best model: v{version} with accuracy {accuracy*100:.2f}%")
+
+            # Cleanup old versions
+            self._cleanup_old_versions()
+
+            return model_version
+
+    def _cleanup_old_versions(self) -> None:
+        """Remove oldest versions beyond max_versions limit"""
+        if len(self.versions) <= self.max_versions:
+            return
+
+        # Sort by version number, keep most recent
+        sorted_versions = sorted(self.versions.keys())
+        versions_to_remove = sorted_versions[:-self.max_versions]
+
+        for v in versions_to_remove:
+            model_version = self.versions.pop(v)
+            # Archive the model file instead of deleting
+            if model_version.file_path and model_version.file_path.exists():
+                archive_path = MODEL_ARCHIVE_DIR / model_version.file_path.name
+                model_version.file_path.rename(archive_path)
+                logger.info(f"📦 Archived model v{v} to {archive_path}")
+
+    def get_version(self, version: int) -> Optional[ModelVersion]:
+        """Get a specific model version"""
+        return self.versions.get(version)
+
+    def get_rollback_candidates(self) -> List[ModelVersion]:
+        """Get list of versions available for rollback, sorted by accuracy"""
+        return sorted(
+            [v for v in self.versions.values() if not v.is_active],
+            key=lambda x: x.accuracy,
+            reverse=True
+        )
+
+    def rollback_to_version(self, target_version: int) -> Optional[ModelVersion]:
+        """
+        Rollback to a previous model version.
+        Creates a new version entry that references the rollback source.
+        """
+        with self._lock:
+            if target_version not in self.versions:
+                logger.error(f"❌ Cannot rollback: version {target_version} not found")
+                return None
+
+            source = self.versions[target_version]
+            new_version = self.current_version + 1
+
+            rollback_entry = ModelVersion(
+                version=new_version,
+                accuracy=source.accuracy,
+                num_devices=source.num_devices,
+                aggregation_round=source.aggregation_round,
+                created_at=datetime.now(),
+                file_path=source.file_path,
+                is_active=True,
+                rolled_back_from=target_version
+            )
+
+            # Deactivate current
+            if self.current_version in self.versions:
+                self.versions[self.current_version].is_active = False
+
+            self.versions[new_version] = rollback_entry
+            self.current_version = new_version
+
+            logger.warning(
+                f"⏪ ROLLBACK: Created v{new_version} from v{target_version} "
+                f"(accuracy: {source.accuracy*100:.2f}%)"
+            )
+
+            return rollback_entry
+
+    def get_registry_status(self) -> Dict[str, Any]:
+        """Get registry status summary"""
+        return {
+            "total_versions": len(self.versions),
+            "current_version": self.current_version,
+            "best_version": self.best_version,
+            "best_accuracy": self.best_accuracy,
+            "versions": [v.to_dict() for v in sorted(
+                self.versions.values(), key=lambda x: x.version, reverse=True
+            )[:5]]  # Last 5 versions
+        }
+
+
+class PerformanceMonitor:
+    """
+    Monitors model performance over time and detects anomalies.
+    Triggers alerts on accuracy degradation, stale devices, etc.
+    """
+
+    def __init__(self, history_size: int = PERFORMANCE_HISTORY_SIZE):
+        self.accuracy_history: deque = deque(maxlen=history_size)
+        self.device_last_seen: Dict[str, datetime] = {}
+        self.alerts: List[Alert] = []
+        self.alert_callback: Optional[callable] = None
+        self._lock = threading.Lock()
+
+    def record_aggregation(
+        self,
+        version: int,
+        accuracy: float,
+        num_devices: int,
+        device_ids: List[str]
+    ) -> List[Alert]:
+        """Record aggregation metrics and check for issues"""
+        new_alerts = []
+
+        with self._lock:
+            # Update device last seen
+            now = datetime.now()
+            for device_id in device_ids:
+                self.device_last_seen[device_id] = now
+
+            # Check for accuracy degradation
+            if len(self.accuracy_history) >= 3:
+                recent_avg = np.mean(list(self.accuracy_history)[-3:])
+                if accuracy < recent_avg - ACCURACY_DEGRADATION_THRESHOLD:
+                    alert = Alert(
+                        timestamp=now,
+                        severity=AlertSeverity.WARNING,
+                        category="accuracy_degradation",
+                        message=f"Model accuracy dropped from {recent_avg*100:.2f}% to {accuracy*100:.2f}%",
+                        metadata={
+                            "version": version,
+                            "current_accuracy": accuracy,
+                            "recent_average": recent_avg,
+                            "degradation": recent_avg - accuracy
+                        }
+                    )
+                    new_alerts.append(alert)
+
+            # Record accuracy
+            self.accuracy_history.append(accuracy)
+
+            # Check for stale devices
+            stale_threshold = now - timedelta(hours=MODEL_STALENESS_HOURS)
+            stale_devices = [
+                device_id for device_id, last_seen in self.device_last_seen.items()
+                if last_seen < stale_threshold
+            ]
+
+            if stale_devices and len(stale_devices) > len(self.device_last_seen) * 0.3:
+                alert = Alert(
+                    timestamp=now,
+                    severity=AlertSeverity.WARNING,
+                    category="stale_devices",
+                    message=f"{len(stale_devices)} devices have not sent updates in {MODEL_STALENESS_HOURS}h",
+                    metadata={"stale_devices": stale_devices[:10]}  # Limit to first 10
+                )
+                new_alerts.append(alert)
+
+            # Check for low device participation
+            if num_devices < MIN_DEVICES_FOR_AGGREGATION * 2:
+                alert = Alert(
+                    timestamp=now,
+                    severity=AlertSeverity.INFO,
+                    category="low_participation",
+                    message=f"Only {num_devices} devices participated in aggregation",
+                    metadata={"num_devices": num_devices}
+                )
+                new_alerts.append(alert)
+
+            # Store alerts
+            self.alerts.extend(new_alerts)
+            # Keep only last 100 alerts
+            if len(self.alerts) > 100:
+                self.alerts = self.alerts[-100:]
+
+            # Trigger callback if set
+            if new_alerts and self.alert_callback:
+                for alert in new_alerts:
+                    self.alert_callback(alert)
+
+        return new_alerts
+
+    def get_performance_summary(self) -> Dict[str, Any]:
+        """Get performance summary"""
+        history = list(self.accuracy_history)
+        return {
+            "total_rounds": len(history),
+            "current_accuracy": history[-1] if history else 0.0,
+            "average_accuracy": float(np.mean(history)) if history else 0.0,
+            "min_accuracy": float(np.min(history)) if history else 0.0,
+            "max_accuracy": float(np.max(history)) if history else 0.0,
+            "accuracy_trend": self._calculate_trend(history),
+            "active_devices": len(self.device_last_seen),
+            "recent_alerts": [a.to_dict() for a in self.alerts[-5:]]
+        }
+
+    def _calculate_trend(self, history: List[float]) -> str:
+        """Calculate accuracy trend"""
+        if len(history) < 5:
+            return "insufficient_data"
+
+        recent = history[-5:]
+        older = history[-10:-5] if len(history) >= 10 else history[:5]
+
+        recent_avg = np.mean(recent)
+        older_avg = np.mean(older)
+
+        diff = recent_avg - older_avg
+        if diff > 0.02:
+            return "improving"
+        elif diff < -0.02:
+            return "declining"
+        else:
+            return "stable"
+
 
 class GlobalModel:
-    """Global model in federated learning"""
+    """Global model in federated learning with enhanced metadata tracking"""
 
     def __init__(self, version: int = 0):
         self.version = version
@@ -99,6 +426,10 @@ class GlobalModel:
         self.created_at = datetime.now()
         self.num_devices_aggregated = 0
         self.aggregation_round = 0
+        # New: Enhanced tracking
+        self.total_samples_processed = 0
+        self.device_contributions: Dict[str, float] = {}  # device_id -> contribution weight
+        self.parent_version: Optional[int] = None  # For rollback tracking
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert model metadata to dictionary"""
@@ -108,6 +439,9 @@ class GlobalModel:
             "created_at": self.created_at.isoformat(),
             "num_devices_aggregated": self.num_devices_aggregated,
             "aggregation_round": self.aggregation_round,
+            "total_samples_processed": self.total_samples_processed,
+            "device_contributions": self.device_contributions,
+            "parent_version": self.parent_version,
         }
 
     def save(self, path: Path) -> None:
@@ -131,7 +465,15 @@ class GlobalModel:
 
 
 class FederatedAggregator:
-    """Federated learning aggregator using FedAvg algorithm"""
+    """
+    Federated learning aggregator using FedAvg algorithm.
+    
+    Enhanced with:
+    - Model version registry with rollback capability
+    - Performance monitoring with alerts
+    - Adaptive contribution weighting
+    - Health status reporting
+    """
 
     def __init__(self, producer: KafkaProducer):
         self.global_model = GlobalModel(version=0)
@@ -141,7 +483,81 @@ class FederatedAggregator:
         self.db_connection: psycopg2.extensions.connection | None = None
         self.producer = producer
 
+        # New: Enhanced components
+        self.model_registry = ModelRegistry()
+        self.performance_monitor = PerformanceMonitor()
+        self.performance_monitor.alert_callback = self._handle_alert
+
         self._init_database()
+
+    def _handle_alert(self, alert: Alert) -> None:
+        """Handle system alerts - can be extended for notifications"""
+        severity_emoji = {
+            AlertSeverity.INFO: "ℹ️",
+            AlertSeverity.WARNING: "⚠️",
+            AlertSeverity.CRITICAL: "🚨"
+        }
+        emoji = severity_emoji.get(alert.severity, "📢")
+        logger.log(
+            logging.WARNING if alert.severity != AlertSeverity.INFO else logging.INFO,
+            f"{emoji} ALERT [{alert.category}]: {alert.message}"
+        )
+
+        # Publish alert to Kafka for external consumers
+        try:
+            alert_data = alert.to_dict()
+            alert_data["type"] = "system_alert"
+            self.producer.send("system-alerts", value=alert_data)
+        except Exception as e:
+            logger.debug(f"Could not publish alert to Kafka: {e}")
+
+    def get_system_status(self) -> Dict[str, Any]:
+        """Get comprehensive system status for monitoring"""
+        return {
+            "global_model": self.global_model.to_dict(),
+            "aggregation_round": self.aggregation_round,
+            "pending_updates": self.update_count,
+            "buffered_devices": len(self.local_model_buffer),
+            "model_registry": self.model_registry.get_registry_status(),
+            "performance": self.performance_monitor.get_performance_summary(),
+            "timestamp": datetime.now().isoformat()
+        }
+
+    def rollback_model(self, target_version: Optional[int] = None) -> bool:
+        """
+        Rollback to a previous model version.
+        If target_version is None, rolls back to the best performing version.
+        """
+        if target_version is None:
+            # Find best performing version
+            target_version = self.model_registry.best_version
+
+        if target_version == self.global_model.version:
+            logger.warning("Already on the target version")
+            return False
+
+        rollback_entry = self.model_registry.rollback_to_version(target_version)
+        if rollback_entry:
+            # Load the model from disk if available
+            if rollback_entry.file_path and rollback_entry.file_path.exists():
+                loaded_model = GlobalModel.load(rollback_entry.file_path)
+                if loaded_model:
+                    loaded_model.version = rollback_entry.version
+                    loaded_model.parent_version = target_version
+                    self.global_model = loaded_model
+
+            # Publish rollback event
+            rollback_update = {
+                "type": "model_rollback",
+                "new_version": rollback_entry.version,
+                "source_version": target_version,
+                "accuracy": rollback_entry.accuracy,
+                "timestamp": datetime.now().isoformat()
+            }
+            self._publish_global_update(rollback_update)
+            return True
+
+        return False
 
     # -----------------------------------------------------------------
     # DATABASE
@@ -284,6 +700,11 @@ class FederatedAggregator:
         Aggregation:
           - GlobalAccuracy = Σ(accuracy_i × samples_i) / Σ(samples_i)
           - Devices contribute proportionally to their samples_processed
+          
+        Enhanced with:
+          - Model registry tracking
+          - Performance monitoring
+          - Contribution weighting tracking
         """
         try:
             num_devices = len(self.local_model_buffer)
@@ -303,6 +724,8 @@ class FederatedAggregator:
             total_samples = 0
             weighted_accuracy = 0.0
             device_accuracies: List[Dict[str, Any]] = []
+            device_contributions: Dict[str, float] = {}
+            participating_device_ids: List[str] = []
 
             for device_id, updates in self.local_model_buffer.items():
                 if not updates:
@@ -322,6 +745,7 @@ class FederatedAggregator:
 
                 weighted_accuracy += accuracy * samples
                 total_samples += samples
+                participating_device_ids.append(device_id)
 
                 logger.info(
                     "  Device %s: accuracy=%.2f%%, samples=%d",
@@ -330,16 +754,25 @@ class FederatedAggregator:
                     samples,
                 )
 
+            # Calculate contribution weights (normalized)
+            for da in device_accuracies:
+                contrib_weight = da["samples"] / total_samples if total_samples > 0 else 0.0
+                device_contributions[da["device_id"]] = contrib_weight
+
             global_accuracy = (
                 weighted_accuracy / total_samples if total_samples > 0 else 0.0
             )
 
             # Update global model state
+            prev_version = self.global_model.version
             self.global_model.version += 1
             self.global_model.accuracy = global_accuracy
             self.global_model.num_devices_aggregated = num_devices
             self.aggregation_round += 1
             self.global_model.aggregation_round = self.aggregation_round
+            self.global_model.total_samples_processed = total_samples
+            self.global_model.device_contributions = device_contributions
+            self.global_model.parent_version = prev_version
 
             logger.info("\n  Global Model v%d:", self.global_model.version)
             logger.info("  Weighted Average Accuracy: %.2f%%", global_accuracy * 100.0)
@@ -349,6 +782,23 @@ class FederatedAggregator:
             # Persist model snapshot
             model_path = GLOBAL_MODELS_DIR / f"global_model_v{self.global_model.version}.pkl"
             self.global_model.save(model_path)
+
+            # Register model in registry
+            self.model_registry.register_model(
+                version=self.global_model.version,
+                accuracy=global_accuracy,
+                num_devices=num_devices,
+                aggregation_round=self.aggregation_round,
+                file_path=model_path
+            )
+
+            # Record performance metrics and check for alerts
+            alerts = self.performance_monitor.record_aggregation(
+                version=self.global_model.version,
+                accuracy=global_accuracy,
+                num_devices=num_devices,
+                device_ids=participating_device_ids
+            )
 
             # Save summary to DB
             self._save_global_model_to_db(global_accuracy, num_devices)
@@ -362,8 +812,11 @@ class FederatedAggregator:
                 "global_accuracy": global_accuracy,
                 "num_devices": num_devices,
                 "device_accuracies": device_accuracies,
+                "device_contributions": device_contributions,
                 "timestamp": datetime.now().isoformat(),
                 "total_samples": total_samples,
+                "alerts_triggered": len(alerts),
+                "registry_status": self.model_registry.get_registry_status(),
             }
 
             logger.info("%s\n", "=" * 70)
@@ -371,6 +824,7 @@ class FederatedAggregator:
 
         except Exception as e:
             logger.error(f"Error in aggregation: {e}", exc_info=True)
+            return None
             return None
 
     def _save_global_model_to_db(self, accuracy: float, num_devices: int) -> None:

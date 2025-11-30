@@ -43,6 +43,110 @@ This approach eliminates NumPy compilation issues on Windows and ensures identic
 -   Cross-platform deployment (Windows, macOS, Linux)
 -   Automatic service orchestration and health checking
 
+## 🚀 Advanced Features
+
+### Model Version Registry with Rollback
+
+The federated aggregation service includes a comprehensive **Model Version Registry** that enables production-grade model management:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Model Registry                                │
+├─────────────────────────────────────────────────────────────────┤
+│ Version │ Accuracy │ Devices │  Status  │     Created At        │
+├─────────┼──────────┼─────────┼──────────┼───────────────────────┤
+│   v12   │  94.2%   │   128   │  active  │  2024-01-15 10:30:00  │
+│   v11   │  93.8%   │   125   │ archived │  2024-01-15 10:15:00  │
+│   v10   │  91.2%   │   130   │ archived │  2024-01-15 10:00:00  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Capabilities:**
+- **Version Tracking**: Every aggregated model is versioned and persisted
+- **Best Model Tracking**: Automatically identifies the best-performing model version
+- **Rollback Support**: Instantly rollback to any previous model version if accuracy degrades
+- **Model Archiving**: Old versions are archived (not deleted) for compliance and analysis
+- **Contribution Tracking**: Records which devices contributed to each model version
+
+### Adaptive Anomaly Thresholds
+
+Instead of using a fixed anomaly threshold, the system now **adapts thresholds per device** based on historical patterns:
+
+```python
+# Configuration
+ADAPTIVE_THRESHOLD_ENABLED = True
+TARGET_ANOMALY_RATE = 0.05          # Target 5% anomaly rate
+MIN_THRESHOLD = 0.2                  # Lower bound
+MAX_THRESHOLD = 0.8                  # Upper bound
+THRESHOLD_ADJUSTMENT_FACTOR = 0.02   # Adjustment step
+```
+
+**How It Works:**
+1. Each device maintains its own threshold (starts at 0.4)
+2. System tracks anomaly rate over a sliding window of 100 samples
+3. If anomaly rate > 7.5% (1.5x target), threshold increases
+4. If anomaly rate < 2.5% (0.5x target), threshold decreases
+5. Thresholds are bounded between 0.2 and 0.8
+
+**Benefits:**
+- **Reduced False Positives**: Noisy devices get higher thresholds automatically
+- **Better Sensitivity**: Stable devices can detect subtle anomalies with lower thresholds
+- **Self-Calibrating**: No manual tuning required per device
+
+### Performance Monitoring & Alerting
+
+The system includes built-in health monitoring with automatic alerts:
+
+| Alert Category | Severity | Trigger Condition |
+|----------------|----------|-------------------|
+| `accuracy_degradation` | WARNING | Accuracy drops >5% from recent average |
+| `stale_devices` | WARNING | >30% devices inactive for 24+ hours |
+| `low_participation` | INFO | Fewer than 4 devices in aggregation |
+
+Alerts are:
+- Published to `system-alerts` Kafka topic for external consumption
+- Logged with severity-appropriate emoji indicators
+- Stored in memory for dashboard queries
+
+### Data Quality Monitoring
+
+Real-time data quality checks on incoming IoT readings:
+
+```python
+# Quality checks per reading:
+├── Invalid Value Detection (NaN, Inf)
+├── Extreme Value Detection (>10σ from mean)
+└── Stuck Sensor Detection (5+ identical consecutive values)
+```
+
+**Quality Score**: Each reading gets a quality score (0.0-1.0) that affects anomaly detection confidence.
+
+### System Status API
+
+The aggregator exposes a comprehensive status endpoint:
+
+```python
+status = aggregator.get_system_status()
+
+# Returns:
+{
+    "global_model": { "version": 12, "accuracy": 0.942, ... },
+    "aggregation_round": 6,
+    "pending_updates": 3,
+    "buffered_devices": 45,
+    "model_registry": {
+        "total_versions": 12,
+        "best_version": 12,
+        "best_accuracy": 0.942
+    },
+    "performance": {
+        "accuracy_trend": "improving",
+        "active_devices": 128,
+        "recent_alerts": [...]
+    }
+}
+```
+
 ## Random Cut Forest (RCF) Anomaly Detection
 
 The platform uses Random Cut Forest for real-time anomaly detection in IoT data streams, leveraging key stream mining concepts:
