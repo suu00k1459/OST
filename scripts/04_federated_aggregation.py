@@ -555,9 +555,9 @@ class DifferentialPrivacy:
                 scale_factor = 1.0 / np.sqrt(num_devices) if num_devices > 0 else 1.0
                 noised_acc = self.add_noise(clipped_acc, scale_factor)
                 
-                private_data["accuracy"] = noised_acc
-                private_data["dp_clipped"] = abs(original_acc - clipped_acc) > 1e-6
-                private_data["dp_noise_added"] = noised_acc - clipped_acc
+                private_data["accuracy"] = float(noised_acc)
+                private_data["dp_clipped"] = bool(abs(original_acc - clipped_acc) > 1e-6)
+                private_data["dp_noise_added"] = float(noised_acc - clipped_acc)
                 
                 privatized.append(private_data)
                 total_noise_added += abs(noised_acc - clipped_acc)
@@ -568,12 +568,12 @@ class DifferentialPrivacy:
             
             dp_metadata = {
                 "dp_applied": True,
-                "epsilon": self.epsilon,
-                "delta": self.delta,
-                "noise_scale": self.noise_scale,
-                "avg_noise_magnitude": total_noise_added / len(device_accuracies) if device_accuracies else 0,
-                "privacy_spent_total": self.privacy_spent,
-                "rounds_processed": self.rounds_processed
+                "epsilon": float(self.epsilon),
+                "delta": float(self.delta),
+                "noise_scale": float(self.noise_scale),
+                "avg_noise_magnitude": float(total_noise_added / len(device_accuracies)) if device_accuracies else 0.0,
+                "privacy_spent_total": float(self.privacy_spent),
+                "rounds_processed": int(self.rounds_processed)
             }
             
             logger.info(
@@ -586,13 +586,13 @@ class DifferentialPrivacy:
     def get_privacy_status(self) -> Dict[str, Any]:
         """Get current privacy status and budget consumption"""
         return {
-            "enabled": self.enabled,
-            "epsilon": self.epsilon,
-            "delta": self.delta,
-            "noise_scale": self.noise_scale,
-            "privacy_spent": self.privacy_spent,
-            "rounds_processed": self.rounds_processed,
-            "remaining_budget_estimate": max(0, 10.0 - self.privacy_spent)  # Assuming budget of 10
+            "enabled": bool(self.enabled),
+            "epsilon": float(self.epsilon),
+            "delta": float(self.delta),
+            "noise_scale": float(self.noise_scale),
+            "privacy_spent": float(self.privacy_spent),
+            "rounds_processed": int(self.rounds_processed),
+            "remaining_budget_estimate": float(max(0, 10.0 - self.privacy_spent))  # Assuming budget of 10
         }
 
 
@@ -762,13 +762,13 @@ class DeviceClusterManager:
                                 self.device_clusters[device_data["device_id"]] = largest_cluster
                             del clusters[small_cid]
             
-            # Update cluster stats
+            # Update cluster stats - convert numpy types to Python native
             self.cluster_stats = {
                 cid: {
-                    "num_devices": len(devs),
-                    "avg_accuracy": np.mean([d["accuracy"] for d in devs]),
-                    "total_samples": sum(d["samples"] for d in devs),
-                    "profile": cluster_profiles.get(cid, {})
+                    "num_devices": int(len(devs)),
+                    "avg_accuracy": float(np.mean([d["accuracy"] for d in devs])),
+                    "total_samples": int(sum(d["samples"] for d in devs)),
+                    "profile": {k: float(v) for k, v in cluster_profiles.get(cid, {}).items()}
                 }
                 for cid, devs in clusters.items()
             }
@@ -784,10 +784,10 @@ class DeviceClusterManager:
     def get_cluster_status(self) -> Dict[str, Any]:
         """Get current clustering status"""
         return {
-            "enabled": self.enabled,
-            "num_clusters": len(self.cluster_stats),
+            "enabled": bool(self.enabled),
+            "num_clusters": int(len(self.cluster_stats)),
             "cluster_stats": self.cluster_stats,
-            "total_tracked_devices": len(self.device_accuracy_history)
+            "total_tracked_devices": int(len(self.device_accuracy_history))
         }
 
 
