@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# ============================================================================
+# FLEAD Platform Startup Script (Linux/macOS/WSL)
+# Single-broker Kafka mode - starts all Docker services and pipeline
+# Usage: ./start [--fast] [--no-wait] [--safe]
+# ============================================================================
 set -e
 
 # Go to repo root (directory of this script)
@@ -82,7 +87,7 @@ echo
 "${DOCKER_COMPOSE[@]}" down || true
 docker container rm -f zookeeper kafka timescaledb grafana kafka-ui \
   flink-jobmanager flink-taskmanager spark-master spark-worker-1 \
-  kafka-broker-1 kafka-broker-2 kafka-broker-3 kafka-broker-4 \
+  kafka-broker-1 \
   timescaledb-collector federated-aggregator device-viewer \
   monitoring-dashboard grafana-init database-init 2>/dev/null || true
 
@@ -96,7 +101,7 @@ echo
 "${DOCKER_COMPOSE[@]}" up -d
 echo
 
-echo "Waiting 30 seconds for services to come up..."
+echo "Waiting 30 seconds for services to come up (single-broker setup)..."
 sleep 30
 "${DOCKER_COMPOSE[@]}" ps
 echo
@@ -106,10 +111,23 @@ echo "STARTING PIPELINE ORCHESTRATOR (POSIX)"
 echo "===================================================================="
 echo
 
+# Handle optional startup flags
+ORCH_FLAGS=""
+for arg in "$@"; do
+  case "$arg" in
+    --fast|--no-wait|--safe)
+      ORCH_FLAGS="$ORCH_FLAGS $arg"
+      ;;
+    *)
+      ORCH_FLAGS="$ORCH_FLAGS $arg"
+      ;;
+  esac
+done
+
 if command -v python3 >/dev/null 2>&1; then
-  python3 scripts/pipeline_orchestrator.py
+  python3 scripts/pipeline_orchestrator.py $ORCH_FLAGS
 else
-  python scripts/pipeline_orchestrator.py
+  python scripts/pipeline_orchestrator.py $ORCH_FLAGS
 fi
 
 echo
@@ -119,7 +137,7 @@ echo "===================================================================="
 echo
 echo "ACCESS POINTS:"
 echo "  Live Monitoring:          http://localhost:5001"
-echo "  Grafana Dashboard:        http://localhost:3001"
+echo "  Grafana Dashboard:        http://localhost:3001  (admin/admin)"
 echo "  Kafka UI:                 http://localhost:8081"
 echo "  Device Viewer Website:    http://localhost:8082"
 echo "  Flink Dashboard:          http://localhost:8161"

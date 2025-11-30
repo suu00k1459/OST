@@ -1,4 +1,9 @@
 @echo off
+REM ============================================================================
+REM FLEAD Platform Shutdown Script (Windows)
+REM Stops all Docker services and cleans up containers
+REM Usage: STOP.bat
+REM ============================================================================
 setlocal
 title FEDERATED LEARNING PLATFORM - SHUTDOWN (WINDOWS)
 

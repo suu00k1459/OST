@@ -1,4 +1,9 @@
 @echo off
+REM ============================================================================
+REM FLEAD Platform Startup Script (Windows)
+REM Single-broker Kafka mode - starts all Docker services and pipeline
+REM Usage: START.bat [--fast] [--no-wait] [--safe]
+REM ============================================================================
 setlocal enabledelayedexpansion
 title FEDERATED LEARNING PLATFORM - COMPLETE PIPELINE STARTUP
 
