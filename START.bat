@@ -178,7 +178,23 @@ echo   Kafka UI:                 http://localhost:8081
 echo   Device Viewer Website:    http://localhost:8082
 echo   Flink Dashboard:          http://localhost:8161
 echo   Spark Master:             http://localhost:8086
+echo   Prometheus:               http://localhost:9090
+echo   Alertmanager:             http://localhost:9093
 echo   TimescaleDB:              localhost:5432
+echo.
+
+REM ---------------------------------------------------
+REM STEP 9: AUTO-OPEN DASHBOARDS IN BROWSER
+REM ---------------------------------------------------
+echo Opening dashboards in browser...
+timeout /t 3 >nul
+
+REM Open key monitoring portals automatically
+start "" "http://localhost:3001"
+start "" "http://localhost:5001"
+start "" "http://localhost:9090"
+start "" "http://localhost:8081"
+
 echo.
 echo LOGS:
 echo   docker compose logs -f

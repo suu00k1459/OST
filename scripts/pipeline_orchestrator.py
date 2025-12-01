@@ -243,6 +243,8 @@ def start_spark_analytics_nonblocking(
         "/opt/spark/bin/spark-submit",
         "--packages",
         "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0",
+        "--conf",
+        "spark.jars.ivy=/opt/spark/ivy",
         "--master",
         "spark://spark-master:7077",
         target_path,

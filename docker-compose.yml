@@ -248,11 +248,11 @@ services:
     networks:
       - flead_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/json/"]
+      test: ["CMD", "curl", "-f", "-m", "20", "http://localhost:8080/json/"]
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      timeout: 25s
+      retries: 10
+      start_period: 300s
     depends_on:
       kafka-broker-1:
         condition: service_started

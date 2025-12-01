@@ -118,7 +118,7 @@
         {
           "datasource": {"type": "postgres", "uid": "timescaledb"},
           "format": "table",
-          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE severity IN ('medium', 'high', 'critical')) * 1.0 / NULLIF(COUNT(*), 0), 0) FROM anomalies WHERE detected_at > NOW() - INTERVAL '1 hour'",
+          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE severity IN ('medium', 'high', 'critical')) * 1.0 / NULLIF(COUNT(*), 0), 0) FROM anomalies WHERE ts > NOW() - INTERVAL '1 hour'",
           "refId": "A"
         }
       ],
@@ -297,7 +297,7 @@
         {
           "datasource": {"type": "postgres", "uid": "timescaledb"},
           "format": "time_series",
-          "rawSql": "SELECT time_bucket('1 minute', detected_at) AS time, COUNT(*) as anomalies FROM anomalies WHERE detected_at > NOW() - INTERVAL '30 minutes' GROUP BY time_bucket('1 minute', detected_at) ORDER BY time",
+          "rawSql": "SELECT time_bucket('1 minute', ts) AS time, COUNT(*) as anomalies FROM anomalies WHERE ts > NOW() - INTERVAL '30 minutes' GROUP BY time_bucket('1 minute', ts) ORDER BY time",
           "refId": "A"
         }
       ],

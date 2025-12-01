@@ -791,6 +791,341 @@ class DeviceClusterManager:
         }
 
 
+# ---------------------------------------------------------------------
+# A/B TESTING SETTINGS
+# ---------------------------------------------------------------------
+AB_TESTING_ENABLED = True                  # Toggle A/B testing on/off
+AB_TRAFFIC_SPLIT = 0.2                     # 20% of devices get model B
+AB_MIN_SAMPLES_FOR_SIGNIFICANCE = 30       # Minimum samples before comparing
+AB_SIGNIFICANCE_LEVEL = 0.05              # p-value threshold for significance
+
+
+class ABTestManager:
+    """
+    A/B Testing Framework for Federated Learning Models.
+    
+    Enables controlled experiments to compare different model versions,
+    aggregation strategies, or hyperparameters by splitting traffic
+    between control (A) and treatment (B) groups.
+    
+    Features:
+    - Deterministic device assignment based on device_id hash
+    - Statistical significance testing (two-sample t-test)
+    - Automatic winner detection
+    - Experiment lifecycle management
+    """
+    
+    def __init__(
+        self,
+        traffic_split: float = AB_TRAFFIC_SPLIT,
+        min_samples: int = AB_MIN_SAMPLES_FOR_SIGNIFICANCE,
+        significance_level: float = AB_SIGNIFICANCE_LEVEL,
+        enabled: bool = AB_TESTING_ENABLED
+    ):
+        self.traffic_split = traffic_split  # Fraction of devices in group B
+        self.min_samples = min_samples
+        self.significance_level = significance_level
+        self.enabled = enabled
+        
+        # Experiment state
+        self.active_experiment: Optional[Dict[str, Any]] = None
+        self.experiments_history: List[Dict[str, Any]] = []
+        
+        # Results tracking
+        self.group_a_results: List[float] = []  # Control group accuracies
+        self.group_b_results: List[float] = []  # Treatment group accuracies
+        self.device_assignments: Dict[str, str] = {}  # device_id -> "A" or "B"
+        
+        self._lock = threading.Lock()
+        
+        if self.enabled:
+            logger.info(
+                f"🧪 A/B Testing enabled: traffic_split={traffic_split*100:.0f}% B, "
+                f"min_samples={min_samples}, α={significance_level}"
+            )
+    
+    def start_experiment(
+        self,
+        name: str,
+        description: str,
+        variant_a_config: Dict[str, Any],
+        variant_b_config: Dict[str, Any],
+        traffic_split: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Start a new A/B experiment.
+        
+        Args:
+            name: Experiment name/identifier
+            description: What we're testing
+            variant_a_config: Configuration for control group (A)
+            variant_b_config: Configuration for treatment group (B)
+            traffic_split: Optional override for B group percentage
+            
+        Returns:
+            Experiment metadata
+        """
+        with self._lock:
+            if self.active_experiment:
+                # End current experiment first
+                self._end_experiment("superseded")
+            
+            experiment = {
+                "id": f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                "name": name,
+                "description": description,
+                "variant_a_config": variant_a_config,
+                "variant_b_config": variant_b_config,
+                "traffic_split": traffic_split or self.traffic_split,
+                "started_at": datetime.now().isoformat(),
+                "ended_at": None,
+                "status": "running",
+                "winner": None
+            }
+            
+            self.active_experiment = experiment
+            self.group_a_results = []
+            self.group_b_results = []
+            self.device_assignments = {}
+            
+            logger.info(f"🧪 Started A/B experiment: {name}")
+            logger.info(f"   Variant A (Control): {variant_a_config}")
+            logger.info(f"   Variant B (Treatment): {variant_b_config}")
+            
+            return experiment
+    
+    def assign_device(self, device_id: str) -> str:
+        """
+        Deterministically assign a device to group A or B.
+        
+        Uses hash of device_id for consistent assignment - the same device
+        will always be in the same group during an experiment.
+        
+        Returns:
+            "A" for control group, "B" for treatment group
+        """
+        if not self.enabled or not self.active_experiment:
+            return "A"
+        
+        with self._lock:
+            # Check if already assigned
+            if device_id in self.device_assignments:
+                return self.device_assignments[device_id]
+            
+            # Use hash for deterministic assignment
+            hash_value = hash(device_id + self.active_experiment["id"])
+            normalized = (hash_value % 1000) / 1000.0
+            
+            split = self.active_experiment.get("traffic_split", self.traffic_split)
+            assignment = "B" if normalized < split else "A"
+            
+            self.device_assignments[device_id] = assignment
+            return assignment
+    
+    def record_result(self, device_id: str, accuracy: float) -> None:
+        """
+        Record the accuracy result for a device.
+        
+        Args:
+            device_id: The device's identifier
+            accuracy: Achieved accuracy (0-1)
+        """
+        if not self.enabled or not self.active_experiment:
+            return
+        
+        with self._lock:
+            group = self.device_assignments.get(device_id, "A")
+            
+            if group == "A":
+                self.group_a_results.append(accuracy)
+            else:
+                self.group_b_results.append(accuracy)
+    
+    def get_experiment_status(self) -> Dict[str, Any]:
+        """
+        Get current experiment status with statistical analysis.
+        
+        Returns:
+            Dict with experiment info, group statistics, and significance test
+        """
+        if not self.active_experiment:
+            return {
+                "active": False,
+                "last_experiment": self.experiments_history[-1] if self.experiments_history else None
+            }
+        
+        with self._lock:
+            n_a = len(self.group_a_results)
+            n_b = len(self.group_b_results)
+            
+            # Basic statistics
+            stats = {
+                "active": True,
+                "experiment": self.active_experiment,
+                "group_a": {
+                    "name": "Control",
+                    "sample_size": n_a,
+                    "mean_accuracy": float(np.mean(self.group_a_results)) if n_a > 0 else 0.0,
+                    "std_accuracy": float(np.std(self.group_a_results)) if n_a > 1 else 0.0
+                },
+                "group_b": {
+                    "name": "Treatment",
+                    "sample_size": n_b,
+                    "mean_accuracy": float(np.mean(self.group_b_results)) if n_b > 0 else 0.0,
+                    "std_accuracy": float(np.std(self.group_b_results)) if n_b > 1 else 0.0
+                },
+                "can_evaluate": n_a >= self.min_samples and n_b >= self.min_samples
+            }
+            
+            # Statistical significance test if enough samples
+            if stats["can_evaluate"]:
+                test_result = self._run_significance_test()
+                stats["significance_test"] = test_result
+                stats["recommendation"] = self._get_recommendation(test_result)
+            else:
+                remaining_a = max(0, self.min_samples - n_a)
+                remaining_b = max(0, self.min_samples - n_b)
+                stats["samples_needed"] = {
+                    "group_a": remaining_a,
+                    "group_b": remaining_b
+                }
+            
+            return stats
+    
+    def _run_significance_test(self) -> Dict[str, Any]:
+        """
+        Run two-sample t-test to check for statistical significance.
+        
+        Uses Welch's t-test (unequal variances assumption).
+        """
+        from scipy import stats as scipy_stats
+        
+        try:
+            # Welch's t-test (doesn't assume equal variances)
+            t_stat, p_value = scipy_stats.ttest_ind(
+                self.group_a_results, 
+                self.group_b_results,
+                equal_var=False
+            )
+            
+            mean_diff = np.mean(self.group_b_results) - np.mean(self.group_a_results)
+            
+            # Effect size (Cohen's d)
+            pooled_std = np.sqrt(
+                (np.var(self.group_a_results) + np.var(self.group_b_results)) / 2
+            )
+            cohens_d = mean_diff / pooled_std if pooled_std > 0 else 0.0
+            
+            return {
+                "t_statistic": float(t_stat),
+                "p_value": float(p_value),
+                "is_significant": bool(p_value < self.significance_level),
+                "mean_difference": float(mean_diff),
+                "effect_size": float(cohens_d),
+                "effect_interpretation": self._interpret_effect_size(cohens_d),
+                "confidence_level": float(1 - self.significance_level)
+            }
+        except ImportError:
+            # Fallback if scipy not available - simple comparison
+            mean_a = np.mean(self.group_a_results)
+            mean_b = np.mean(self.group_b_results)
+            mean_diff = mean_b - mean_a
+            
+            return {
+                "p_value": None,
+                "is_significant": abs(mean_diff) > 0.02,  # Simple threshold
+                "mean_difference": float(mean_diff),
+                "note": "scipy not available, using simple threshold comparison"
+            }
+    
+    def _interpret_effect_size(self, cohens_d: float) -> str:
+        """Interpret Cohen's d effect size"""
+        d = abs(cohens_d)
+        if d < 0.2:
+            return "negligible"
+        elif d < 0.5:
+            return "small"
+        elif d < 0.8:
+            return "medium"
+        else:
+            return "large"
+    
+    def _get_recommendation(self, test_result: Dict[str, Any]) -> str:
+        """Generate recommendation based on test results"""
+        if not test_result.get("is_significant"):
+            return "No significant difference detected. Continue experiment or conclude no effect."
+        
+        mean_diff = test_result.get("mean_difference", 0)
+        effect = test_result.get("effect_interpretation", "unknown")
+        
+        if mean_diff > 0:
+            return f"Treatment (B) outperforms Control (A) with {effect} effect. Consider rolling out B."
+        else:
+            return f"Control (A) outperforms Treatment (B) with {effect} effect. Keep using A."
+    
+    def conclude_experiment(self, winner: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Conclude the current experiment.
+        
+        Args:
+            winner: Manually specify winner ("A", "B", or None for auto-detect)
+            
+        Returns:
+            Final experiment results
+        """
+        if not self.active_experiment:
+            return {"error": "No active experiment"}
+        
+        with self._lock:
+            return self._end_experiment("completed", winner)
+    
+    def _end_experiment(self, reason: str, winner: Optional[str] = None) -> Dict[str, Any]:
+        """Internal method to end experiment"""
+        status = self.get_experiment_status()
+        
+        # Auto-detect winner if not specified and enough samples
+        if winner is None and status.get("can_evaluate"):
+            test_result = status.get("significance_test", {})
+            if test_result.get("is_significant"):
+                mean_diff = test_result.get("mean_difference", 0)
+                winner = "B" if mean_diff > 0 else "A"
+        
+        self.active_experiment["ended_at"] = datetime.now().isoformat()
+        self.active_experiment["status"] = reason
+        self.active_experiment["winner"] = winner
+        self.active_experiment["final_stats"] = {
+            "group_a_samples": len(self.group_a_results),
+            "group_b_samples": len(self.group_b_results),
+            "group_a_mean": float(np.mean(self.group_a_results)) if self.group_a_results else 0.0,
+            "group_b_mean": float(np.mean(self.group_b_results)) if self.group_b_results else 0.0
+        }
+        
+        result = self.active_experiment.copy()
+        self.experiments_history.append(result)
+        self.active_experiment = None
+        
+        winner_str = winner or "no clear winner"
+        logger.info(f"🧪 Experiment concluded: {result['name']} → {winner_str}")
+        
+        return result
+    
+    def get_variant_config(self, device_id: str) -> Dict[str, Any]:
+        """
+        Get the configuration variant for a specific device.
+        
+        Useful for applying different settings based on A/B group.
+        """
+        if not self.enabled or not self.active_experiment:
+            return {}
+        
+        group = self.assign_device(device_id)
+        
+        if group == "A":
+            return self.active_experiment.get("variant_a_config", {})
+        else:
+            return self.active_experiment.get("variant_b_config", {})
+
+
 class GlobalModel:
     """Global model in federated learning with enhanced metadata tracking"""
 
@@ -850,6 +1185,7 @@ class FederatedAggregator:
     - Health status reporting
     - Differential Privacy for privacy-preserving aggregation
     - Device Clustering for handling non-IID data
+    - A/B Testing for controlled model experiments
     """
 
     def __init__(self, producer: KafkaProducer):
@@ -870,6 +1206,9 @@ class FederatedAggregator:
         
         # Device Clustering component
         self.device_cluster_manager = DeviceClusterManager()
+        
+        # A/B Testing component
+        self.ab_test_manager = ABTestManager()
 
         self._init_database()
 
@@ -905,6 +1244,7 @@ class FederatedAggregator:
             "performance": self.performance_monitor.get_performance_summary(),
             "differential_privacy": self.differential_privacy.get_privacy_status(),
             "device_clustering": self.device_cluster_manager.get_cluster_status(),
+            "ab_testing": self.ab_test_manager.get_experiment_status(),
             "timestamp": datetime.now().isoformat()
         }
 
@@ -1201,6 +1541,14 @@ class FederatedAggregator:
                 num_devices=num_devices,
                 device_ids=participating_device_ids
             )
+            
+            # Record A/B testing results for each device
+            for da in device_accuracies:
+                device_id = da["device_id"]
+                # Assign device to A/B group (deterministic based on device_id)
+                self.ab_test_manager.assign_device(device_id)
+                # Record the accuracy result
+                self.ab_test_manager.record_result(device_id, da["accuracy"])
 
             # Save summary to DB
             self._save_global_model_to_db(global_accuracy, num_devices)
@@ -1221,6 +1569,7 @@ class FederatedAggregator:
                 "registry_status": self.model_registry.get_registry_status(),
                 "differential_privacy": dp_metadata,  # Include DP metadata
                 "device_clustering": cluster_info,  # Include clustering info
+                "ab_testing": self.ab_test_manager.get_experiment_status(),  # Include A/B testing
             }
 
             logger.info("%s\n", "=" * 70)

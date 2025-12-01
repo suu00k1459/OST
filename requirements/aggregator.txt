@@ -1,6 +1,7 @@
 numpy
 pandas
 scikit-learn
+scipy
 psycopg2-binary
 sqlalchemy
 kafka-python

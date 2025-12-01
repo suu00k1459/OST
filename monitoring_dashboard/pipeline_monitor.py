@@ -627,7 +627,7 @@ def prometheus_metrics():
                     COUNT(*) FILTER (WHERE severity IN ('medium', 'high', 'critical')) * 1.0 / 
                     NULLIF(COUNT(*), 0)
                 FROM anomalies 
-                WHERE detected_at > NOW() - INTERVAL '1 hour'
+                WHERE ts > NOW() - INTERVAL '1 hour'
             """)
             result = cur.fetchone()
             anomaly_rate = result[0] if result and result[0] else 0
@@ -636,7 +636,7 @@ def prometheus_metrics():
             # Active devices (last 5 minutes)
             cur.execute("""
                 SELECT COUNT(DISTINCT device_id) FROM iot_data 
-                WHERE timestamp > NOW() - INTERVAL '5 minutes'
+                WHERE ts > NOW() - INTERVAL '5 minutes'
             """)
             active_devices = cur.fetchone()[0] or 0
             metrics.append(f"flead_active_devices {active_devices}")
@@ -646,7 +646,7 @@ def prometheus_metrics():
                 SELECT COUNT(DISTINCT device_id) FROM local_models 
                 WHERE device_id NOT IN (
                     SELECT DISTINCT device_id FROM iot_data 
-                    WHERE timestamp > NOW() - INTERVAL '1 hour'
+                    WHERE ts > NOW() - INTERVAL '1 hour'
                 )
             """)
             stale_devices = cur.fetchone()[0] or 0

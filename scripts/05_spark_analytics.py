@@ -34,12 +34,14 @@ from pyspark.sql.functions import (
     from_json,
     least,
     abs,
+    current_timestamp,
 )
 from pyspark.sql.types import (
     StructType,
     StructField,
     StringType,
     DoubleType,
+    IntegerType,
 )
 
 import sys
@@ -288,6 +290,8 @@ class TimescaleDBManager:
             payload = []
             now_ts = datetime.utcnow()
             for r in results:
+                # Always use current processing time for Grafana compatibility
+                # (event timestamps from Kafka data may be historical)
                 payload.append(
                     (
                         r.get("device_id"),
@@ -299,7 +303,7 @@ class TimescaleDBManager:
                         bool(r.get("is_anomaly")) if r.get("is_anomaly") is not None else False,
                         r.get("anomaly_confidence"),
                         r.get("detection_method", "spark_stddev"),
-                        r.get("window_end") or r.get("window_start") or now_ts,
+                        now_ts,  # Use current time, not event time, for real-time dashboards
                     )
                 )
 
@@ -479,10 +483,16 @@ class SparkAnalyticsEngine:
     def _write_stream_batch(self, df: DataFrame, epoch_id: int) -> None:
         """foreachBatch sink to TimescaleDB for stream analysis output."""
         try:
-            rows = [r.asDict() for r in df.collect()]
-            if rows:
-                self.db.insert_stream_results(rows)
-                logger.info("✓ Stream batch %s: wrote %d rows", epoch_id, len(rows))
+            count = df.count()
+            logger.info(f"📊 Stream batch {epoch_id}: DataFrame has {count} rows")
+            if count > 0:
+                rows = [r.asDict() for r in df.collect()]
+                logger.info(f"📊 Stream batch {epoch_id}: Collected {len(rows)} rows for insert")
+                if rows:
+                    self.db.insert_stream_results(rows)
+                    logger.info("✓ Stream batch %s: wrote %d rows", epoch_id, len(rows))
+            else:
+                logger.info(f"📊 Stream batch {epoch_id}: No rows to write (empty batch)")
         except Exception as e:
             logger.error(f"Error writing stream batch {epoch_id}: {e}", exc_info=True)
 
@@ -505,20 +515,30 @@ class SparkAnalyticsEngine:
                 .load()
             )
 
+            # Schema matching actual Kafka message format (IoT data with many fields)
             schema = StructType(
                 [
                     StructField("device_id", StringType()),
                     StructField("timestamp", StringType()),
-                    StructField("data", DoubleType()),
+                    StructField("flow_duration", DoubleType()),
+                    StructField("Header_length", DoubleType()),
+                    StructField("Rate", DoubleType()),
+                    StructField("label", IntegerType()),
                 ]
             )
 
+            # Parse JSON and also keep Kafka's ingestion timestamp
             parsed = kafka_stream.select(
-                from_json(col("value").cast(StringType()), schema).alias("data")
-            ).select("data.*")
+                from_json(col("value").cast(StringType()), schema).alias("data"),
+                col("timestamp").alias("kafka_timestamp")  # Kafka ingestion time
+            ).select("data.*", "kafka_timestamp")
 
+            # Use Kafka's timestamp (current processing time) instead of data's event timestamp
+            # This ensures the watermark advances with real time, not with old data timestamps
             stream_data = parsed.withColumn(
-                "event_time", to_timestamp(col("timestamp"))
+                "event_time", col("kafka_timestamp")  # Use Kafka timestamp, not data timestamp
+            ).withColumn(
+                "data", col("Rate")  # Use Rate field as the data value
             ).withWatermark("event_time", "1 minute")
 
             windowed = (
@@ -553,7 +573,7 @@ class SparkAnalyticsEngine:
                 lit("spark_stddev").alias("detection_method"),
                 col("time_window.start").alias("window_start"),
                 col("time_window.end").alias("window_end"),
-                col("time_window.end").alias("timestamp"),
+                current_timestamp().alias("timestamp"),  # Use actual current time for Grafana
             )
 
             query = (
@@ -618,8 +638,11 @@ class SparkAnalyticsEngine:
         logger.info("=" * 70)
 
         try:
-            # 1) Batch analysis (from CSV)
-            self.run_batch_analysis()
+            # 1) Batch analysis (from CSV) - continue on error
+            try:
+                self.run_batch_analysis()
+            except Exception as e:
+                logger.error(f"Batch analysis failed, continuing to stream: {e}")
 
             # 2) Stream analysis (from Kafka)
             self.run_stream_analysis()

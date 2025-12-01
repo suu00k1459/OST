@@ -411,14 +411,14 @@
       "id": 22,
       "type": "timeseries",
       "title": "📊 Stream Analysis Events",
-      "description": "Real-time stream processing results",
+      "description": "Real-time Spark stream processing results from Kafka",
       "datasource": "FLEAD-TimescaleDB",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
       "targets": [
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT time_bucket('5 minutes', timestamp) AS time, COUNT(*) AS \"Events\", SUM(CASE WHEN is_anomaly THEN 1 ELSE 0 END) AS \"Anomalies\" FROM stream_analysis_results WHERE $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1;"
+          "rawSql": "SELECT time_bucket('1 minute', timestamp) AS time, COUNT(*) AS \"Events\", SUM(CASE WHEN is_anomaly THEN 1 ELSE 0 END) AS \"Anomalies\" FROM stream_analysis_results WHERE $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1;"
         }
       ],
       "fieldConfig": {
@@ -426,15 +426,20 @@
           "unit": "none",
           "color": { "mode": "palette-classic" },
           "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 20,
-            "showPoints": "auto"
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "stacking": { "mode": "none" }
           }
-        }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Events" }, "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Anomalies" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }] }
+        ]
       },
       "options": {
-        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom", "calcs": ["sum"] },
         "tooltip": { "mode": "multi" }
       }
     },
