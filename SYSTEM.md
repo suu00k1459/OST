@@ -1107,20 +1107,7 @@ F1 = 2×(Precision×Recall)/(Precision+Recall) = 93.7% (balanced metric)
 | Average Training Time  | 2-5    | seconds     |
 | Model Inference Time   | <1     | millisecond |
 
-### Accuracy Evolution
 
-```
-Training Progress:
-┌─────────────────────────────────────────────┐
-│ 90% │                                       │
-│ 80% │                    ╱╲                 │
-│ 70% │            ╱╲      ╱  ╲               │
-│ 60% │    ╱╲      ╱  ╲    ╱    ╲     ╱╲     │
-│ 50% │────────────────────────────╲───  ╲───│
-│     └─────────────────────────────────────┘
-│       v1  v10  v20  v30  v40  v50  v60  v70│
-│       Global Model Versions                │
-```
 
 Observations:
 
