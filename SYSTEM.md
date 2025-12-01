@@ -159,7 +159,7 @@ Multi-Broker Kafka Cluster:
 5. Scalability: Easy to add more brokers for more devices
 6. Consumer Access: All consumers (Flink, Spark, Aggregator) connect to all 4 brokers
   
-```
+
 **Training rate :**
 - Shows: "How many new models per minute?"
 - Example: "23 models/minute"
@@ -196,23 +196,9 @@ Multi-Broker Kafka Cluster:
 4. Realistic Simulation: Matches enterprise IoT deployments
 5. Independent Streams: Each broker processes subset independently
 
-**Data Flow:**
 
-```
 
-Device 0-599 → Broker 1 ─┐
-Device 600-1199 → Broker 2 ├─ edge-iiot-stream (replicated)
-Device 1200-1799 → Broker 3 ├─ anomalies topic
-Device 1800-2399 → Broker 4 ─┤─ local-model-updates
-└─ global-model-updates
-│
-┌───────────────┬───────────┼──────────┐
-▼ ▼ ▼ ▼
-Flink consumes from ALL brokers
-Spark consumes from ALL brokers
-Aggregator consumes from ALL brokers
 
-```
 
 **Topics we use:**
 
