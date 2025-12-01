@@ -300,6 +300,8 @@ All containers connected via Docker bridge network `flead_network`:
 -   Spark Worker UI: localhost:8087
 -   Device Viewer: localhost:8082
 -   Monitoring Dashboard: localhost:5001
+-   Prometheus: localhost:9090
+-   Alertmanager: localhost:9093
 -   Jupyter Lab: localhost:8888
 
 ### Volume Mounting
