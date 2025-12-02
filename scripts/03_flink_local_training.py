@@ -18,6 +18,7 @@ For development/testing, see: scripts/flink_local_training_simulator.py
 
 import json
 import logging
+import time
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 import numpy as np
@@ -872,6 +873,8 @@ def main():
         .set_group_id("flink-training")
         .set_starting_offsets(KafkaOffsetsInitializer.latest())
         .set_value_only_deserializer(SimpleStringSchema())
+        # Commit offsets to Kafka on checkpoint so consumer shows in Kafka UI
+        .set_property("commit.offsets.on.checkpoint", "true")
         .build()
     )
 
