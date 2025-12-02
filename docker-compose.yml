@@ -89,7 +89,7 @@ services:
     healthcheck:
       test: ["CMD", "bash", "-c", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
       interval: 30s
-      timeout: 10s
+      timeout: 20s
       retries: 10
       start_period: 180s
 
@@ -353,7 +353,7 @@ services:
       - flead_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost', 9092)); s.close()"]
+      test: ["CMD-SHELL", "cat /proc/1/cmdline | grep -q federated_aggregation || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
