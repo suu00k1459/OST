@@ -1,12 +1,34 @@
 # Stream Mining Pipelines Implementation Guide
 
+
+
+## Table of Contents
+
+- [Course Requirement Mapping](#course-requirement-mapping)
+- [Executive Summary](#executive-summary)
+- [Pipeline 1: Real-Time IoT Data Ingestion](#pipeline-1-real-time-iot-data-ingestion)
+- [Pipeline 2: Local Preprocessing on Edge Devices](#pipeline-2-local-preprocessing-on-edge-devices)
+- [Pipeline 3: Local Model Training with Federated Updates](#pipeline-3-local-model-training-with-federated-updates)
+- [Pipeline 4: Central Aggregation Using FedAvg-Style Weighted Metric Aggregation](#pipeline-4-central-aggregation-using-fedavg-style-weighted-metric-aggregation)
+- [Pipeline 5: Ensemble Anomaly Detection with Averaging and Alarms](#pipeline-5-ensemble-anomaly-detection-with-averaging-and-alarms)
+- [Technology Stack Summary](#technology-stack-summary)
+- [Quick Start](#quick-start)
+- [Kafka Topics Map](#kafka-topics-map)
+- [Conclusion](#conclusion)
+
+
+
 ## Course Requirement Mapping
+
 
 This document explains how the **FLEAD (Federated Learning for Edge IoT Anomaly Detection)** project implements the five required stream mining pipelines for federated learning on IoT sensor data.
 
+
 ---
 
+
 ## Executive Summary
+
 
 | Pipeline | Requirement | Implementation Location | Key Technology |
 |----------|-------------|------------------------|----------------|
@@ -16,20 +38,30 @@ This document explains how the **FLEAD (Federated Learning for Edge IoT Anomaly 
 | **Pipeline 4** | Central aggregation (FedAvg-style weighted metric aggregation) | `04_federated_aggregation.py` → `FederatedAggregator` | Kafka + Python |
 | **Pipeline 5** | Ensemble anomaly detection with averaging/alarms | `03_flink_local_training.py` + `04_federated_aggregation.py` | RCF Ensemble + Alerts |
 
+
+
 ---
+
 
 ## Pipeline 1: Real-Time IoT Data Ingestion
 
+
 ### Requirement
+
 > *"Receive and ingest streaming IoT sensor data in real time, enabling federated learning across edge devices."*
+
 
 ### Implementation
 
+
 #### Data Source
+
 - **2,400+ IoT device CSV files** in `data/processed/` containing sensor readings
 - Each device file contains timestamped sensor measurements
 
+
 #### Kafka Producer Service
+
 **File:** `docker-compose.yml` (lines 296-315)
 
 ```yaml
@@ -48,7 +80,9 @@ kafka-producer:
     KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:9092"
 ```
 
+
 #### Kafka Broker (KRaft Mode)
+
 **File:** `docker-compose.yml` (lines 48-93)
 
 ```yaml
@@ -60,9 +94,10 @@ kafka-broker-1:
     KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 ```
 
+
 #### How It Works
 
-```
+```text
 ┌─────────────────────┐      ┌─────────────────────┐      ┌──────────────────────┐
 │  Device CSV Files   │ ──▶  │   Kafka Producer    │ ──▶  │ edge-iiot-stream     │
 │  (2,400 devices)    │      │   (10 msg/sec)      │      │   (Kafka Topic)      │
@@ -77,7 +112,9 @@ kafka-broker-1:
 ```
 
 #### Message Format
+
 Each IoT reading is published as JSON with a single selected sensor metric per device:
+
 ```json
 {
   "device_id": "device_127",
@@ -85,25 +122,32 @@ Each IoT reading is published as JSON with a single selected sensor metric per d
   "timestamp": "2025-11-07T15:22:31.000Z"
 }
 ```
+
 *Note: The Edge-IIoT dataset contains multiple features; we stream one aggregated sensor value per device for simplicity.*
 
+
 #### Evidence in Code
+
 - Real-time streaming at configurable rate (default 10 msg/sec)
 - Messages distributed across device partitions for parallelism
 - Consumers (Flink, Spark) read simultaneously without blocking
+
+
 
 ---
 
 ## Pipeline 2: Local Preprocessing on Edge Devices
 
-### Requirement
+### Pipeline 2 Requirement
+
 > *"Apply preprocessing on each local IoT device (clean, normalize, and prepare the data). Handle missing values, scaling, and encoding categorical variables, while preserving the privacy of each device's data."*
 
-### Implementation
+### Pipeline 2 Implementation
 
 **File:** `scripts/03_flink_local_training.py`
 
 #### Data Quality Checking (Lines 624-665)
+
 ```python
 def _check_data_quality(self, device_id: str, value: float) -> Dict[str, Any]:
     """Check data quality and track issues"""
@@ -138,6 +182,7 @@ def _check_data_quality(self, device_id: str, value: float) -> Dict[str, Any]:
 ```
 
 #### Normalization (Z-Score Scaling) (Lines 680-700)
+
 ```python
 # Update device statistics (running mean/std)
 stats = self.device_stats[device_id]
@@ -155,6 +200,7 @@ if len(stats["values"]) > 1:
 ```
 
 #### Feature Engineering (Lines 778-785)
+
 ```python
 for i, v in enumerate(stats["values"]):
     # Features: [mean, std, normalized_value] (ENCODING)
@@ -164,9 +210,10 @@ for i, v in enumerate(stats["values"]):
 ```
 
 #### Privacy Preservation
+
 **Key Design Decision:** Raw sensor events are not forwarded to the central aggregator. Only aggregated statistics and model updates are published:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    LOCAL PROCESSING (Per Device)                         │
 │  ┌───────────────┐    ┌───────────────┐    ┌────────────────────────┐   │
@@ -201,10 +248,11 @@ for i, v in enumerate(stats["values"]):
 
 ## Pipeline 3: Local Model Training with Federated Updates
 
-### Requirement
+### Pipeline 3 Requirement
+
 > *"Train local anomaly detection models on each device using online learning techniques and send derived updates/metrics (not raw data) to a central server for aggregation."*
 
-### Implementation
+### Pipeline 3 Implementation
 
 **File:** `scripts/03_flink_local_training.py`
 
@@ -282,7 +330,8 @@ def _create_shingle(self, value: float) -> Optional[np.ndarray]:
 ```
 
 **Shingle Visualization:**
-```
+
+```text
 Time Series:     42  43  41  44  80  42  43  ...
                  ─────────────────────────────▶ time
 
@@ -293,6 +342,7 @@ Shingle (size=4):
 ```
 
 **Why Shingles?**
+
 - Converts temporal patterns to spatial relationships
 - Detects **contextual anomalies** (value normal alone, but unusual in sequence)
 - Example: Temperature=80°C might be valid, but [43,41,44,80] is suspicious
@@ -339,7 +389,8 @@ class RandomCutForest:
 ```
 
 **How Averaging Works:**
-```
+
+```text
 New Data Point
       │
       ▼
@@ -400,7 +451,8 @@ def collusive_displacement(self, point: np.ndarray) -> float:
 ```
 
 **Scoring Visualization:**
-```
+
+```text
 Normal Point (Low Score):           Anomaly Point (High Score):
 ┌─────────────────────┐            ┌─────────────────────┐
 │  Bounding Box       │            │  Bounding Box       │
@@ -416,7 +468,9 @@ Normal Point (Low Score):           Anomaly Point (High Score):
 #### 6. Concept Drift Handling (Automatic Adaptation)
 
 **What is Concept Drift?**
+
 In streaming data, the underlying data distribution can change over time. For example:
+
 - A sensor's "normal" temperature range shifts seasonally
 - Network traffic patterns differ between weekdays and weekends
 - Manufacturing equipment behavior changes as components wear
@@ -437,7 +491,8 @@ def insert(self, point: np.ndarray) -> None:
 ```
 
 **Drift Adaptation Mechanism:**
-```
+
+```text
 Time ────────────────────────────────────────────────────────────────▶
 
 Original Distribution:        Distribution Shift:          Adapted Model:
@@ -450,6 +505,7 @@ Original Distribution:        Distribution Shift:          Adapted Model:
 ```
 
 **Why This Works:**
+
 | Mechanism | How It Handles Drift |
 |-----------|---------------------|
 | **Sliding Window (256 points)** | Old data evicted; model always reflects recent ~256 samples |
@@ -458,6 +514,7 @@ Original Distribution:        Distribution Shift:          Adapted Model:
 | **No Retraining** | Model continuously updates with each new point |
 
 **Adaptation Speed:**
+
 - Each tree holds 256 points maximum
 - At 10 msg/sec, full adaptation takes ~26 seconds per device
 - Gradual drift is absorbed smoothly; sudden shifts trigger temporary anomalies (correct behavior)
@@ -491,46 +548,25 @@ MAX_THRESHOLD = 0.8         # Never too conservative
 
 #### Random Cut Forest (RCF)
 
-1. **Original RCF Paper (ICML 2016):**
-   > Guha, S., Mishra, N., Roy, G., & Schrijvers, O. (2016). *Robust Random Cut Forest Based Anomaly Detection on Streams.* International Conference on Machine Learning (ICML).
-   > 
-   > **Link:** https://proceedings.mlr.press/v48/guha16.pdf
+- **Original RCF Paper (ICML 2016):** Guha, S., Mishra, N., Roy, G., & Schrijvers, O. (2016). *Robust Random Cut Forest Based Anomaly Detection on Streams.* International Conference on Machine Learning (ICML). [Read Paper](https://proceedings.mlr.press/v48/guha16.pdf)
 
-2. **AWS Implementation:**
-   > Amazon Web Services. *Random Cut Forest Algorithm Documentation.*
-   > 
-   > **Link:** https://docs.aws.amazon.com/sagemaker/latest/dg/randomcutforest.html
+- **AWS Implementation:** Amazon Web Services. *Random Cut Forest Algorithm Documentation.* [AWS Docs](https://docs.aws.amazon.com/sagemaker/latest/dg/randomcutforest.html)
 
 #### Federated Learning
 
-3. **FedAvg - Original Federated Averaging Paper:**
-   > McMahan, H. B., Moore, E., Ramage, D., Hampson, S., & y Arcas, B. A. (2017). *Communication-Efficient Learning of Deep Networks from Decentralized Data.* AISTATS.
-   > 
-   > **Link:** https://arxiv.org/abs/1602.05629
+- **FedAvg - Original Federated Averaging Paper:** McMahan, H. B., Moore, E., Ramage, D., Hampson, S., & y Arcas, B. A. (2017). *Communication-Efficient Learning of Deep Networks from Decentralized Data.* AISTATS. [arXiv](https://arxiv.org/abs/1602.05629)
 
-4. **Differential Privacy in Federated Learning:**
-   > Abadi, M., Chu, A., Goodfellow, I., et al. (2016). *Deep Learning with Differential Privacy.* ACM CCS.
-   > 
-   > **Link:** https://arxiv.org/abs/1607.00133
+- **Differential Privacy in Federated Learning:** Abadi, M., Chu, A., Goodfellow, I., et al. (2016). *Deep Learning with Differential Privacy.* ACM CCS. [arXiv](https://arxiv.org/abs/1607.00133)
 
 #### Stream Mining Foundations
 
-5. **Data Streams - Algorithms and Applications:**
-   > Muthukrishnan, S. (2005). *Data Streams: Algorithms and Applications.* Foundations and Trends in Theoretical Computer Science.
-   > 
-   > **Link:** https://www.cs.rutgers.edu/~muthu/stream-1-1.ps
+- **Data Streams - Algorithms and Applications:** Muthukrishnan, S. (2005). *Data Streams: Algorithms and Applications.* Foundations and Trends in Theoretical Computer Science. [Paper](https://www.cs.rutgers.edu/~muthu/stream-1-1.ps)
 
-6. **Sliding Window Algorithms:**
-   > Datar, M., Gionis, A., Indyk, P., & Motwani, R. (2002). *Maintaining Stream Statistics over Sliding Windows.* SIAM Journal on Computing.
-   > 
-   > **Link:** https://cs.stanford.edu/~rajeev/papers/sliding.pdf
+- **Sliding Window Algorithms:** Datar, M., Gionis, A., Indyk, P., & Motwani, R. (2002). *Maintaining Stream Statistics over Sliding Windows.* SIAM Journal on Computing. [Paper](https://cs.stanford.edu/~rajeev/papers/sliding.pdf)
 
 #### Edge-IIoT Dataset
 
-7. **Edge-IIoT Dataset:**
-   > Ferrag, M. A., et al. (2022). *Edge-IIoTset: A New Comprehensive Realistic Cyber Security Dataset of IoT and IIoT Applications.*
-   > 
-   > **Link:** https://www.kaggle.com/datasets/mohamedamineferrag/edgeiiotset-cyber-security-dataset-of-iot-iiot
+- **Edge-IIoT Dataset:** Ferrag, M. A., et al. (2022). *Edge-IIoTset: A New Comprehensive Realistic Cyber Security Dataset of IoT and IIoT Applications.* [Kaggle](https://www.kaggle.com/datasets/mohamedamineferrag/edgeiiotset-cyber-security-dataset-of-iot-iiot)
 
 ---
 
@@ -609,7 +645,7 @@ results["models"].append(json.dumps(model_update))
 
 #### Federated Learning Flow
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         FLINK PARALLEL PROCESSING                            │
 │                                                                              │
@@ -640,6 +676,7 @@ results["models"].append(json.dumps(model_update))
 ```
 
 #### Training Trigger Configuration (Lines 82-83)
+
 ```python
 MODEL_TRAINING_INTERVAL_ROWS = 30   # Train every 30 new samples
 MODEL_TRAINING_INTERVAL_SECONDS = 45  # OR every 45 seconds
@@ -649,10 +686,11 @@ MODEL_TRAINING_INTERVAL_SECONDS = 45  # OR every 45 seconds
 
 ## Pipeline 4: Central Aggregation Using FedAvg-Style Weighted Metric Aggregation
 
-### Requirement
+### Pipeline 4 Requirement
+
 > *"Aggregate the model updates on a central server, using Federated Averaging or another federated aggregation technique, to improve the global model."*
 
-### Implementation
+### Pipeline 4 Implementation
 
 **File:** `scripts/04_federated_aggregation.py`
 
@@ -711,6 +749,7 @@ def _weighted_average(self, updates: List[Dict]) -> float:
 ```
 
 #### Aggregation Configuration (Lines 96-107)
+
 ```python
 # Aggregation Settings
 AGGREGATION_WINDOW = 15          # Aggregate every 15 local model updates
@@ -758,7 +797,7 @@ class DifferentialPrivacy:
 
 #### Central Server Flow
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                      FEDERATED AGGREGATION SERVER                            │
 │                                                                              │
@@ -818,10 +857,11 @@ class ModelRegistry:
 
 ## Pipeline 5: Ensemble Anomaly Detection with Averaging and Alarms
 
-### Requirement
+### Pipeline 5 Requirement
+
 > *"Use ensemble methods for anomaly detection by combining results from different federated models, apply ensemble consensus (averaging) and adaptive thresholding, and trigger alarms when anomalies are detected."*
 
-### Implementation
+### Pipeline 5 Implementation
 
 #### Ensemble Method: Random Cut Forest (50-Tree Ensemble)
 
@@ -967,7 +1007,7 @@ class AdaptiveThresholdManager:
 
 #### Complete Alarm Pipeline
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                          ENSEMBLE ANOMALY DETECTION                          │
 │                                                                              │
