@@ -31,3 +31,32 @@ next
 __pycache__
 logs oo
 data.rar
+BUILDING.md
+Makefile
+
+# Ignore Windows shortcuts and Office temp files
+*.lnk
+*.pptx
+~$*.pptx
+
+# Ignore local scripts and temp files
+docs/create_presentation.py
+docs/Stream_Mining_Pipelines_Presentation.pptx
+docs/~$Stream_Mining_Pipelines_Presentation.pptx
+scripts/__compile_all_scripts.py
+scripts/archive/
+scripts/cleanup_and_build.ps1
+scripts/maintenance.ps1
+scripts/config_loader.py.lnk
+stop.lnk
+grafana_dashboard.json
+prometheus/alertmanager.yml.lnk
+config/settings.json.lnk
+docker/Dockerfile.aggregator.lnk
+docker/Dockerfile.database-init.lnk
+docker/Dockerfile.flink.lnk
+docker/Dockerfile.producer.lnk
+docker/Dockerfile.timescaledb-collector.lnk
+device-viewer/templates/base.html.lnk
+device-viewer/templates/device.html.lnk
+docs/RCF_EXPLAINED.md.lnk
