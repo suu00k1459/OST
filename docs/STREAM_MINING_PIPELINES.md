@@ -12,9 +12,9 @@ This document explains how the **FLEAD (Federated Learning for Edge IoT Anomaly 
 |----------|-------------|------------------------|----------------|
 | **Pipeline 1** | Real-time IoT data ingestion | `docker-compose.yml` → `kafka-producer` | Apache Kafka |
 | **Pipeline 2** | Local preprocessing (clean, normalize, encode) | `03_flink_local_training.py` → `AnomalyDetectionFunction` | Apache Flink |
-| **Pipeline 3** | Local model training (send updates, not raw data) | `03_flink_local_training.py` → `SGDModelTrainer` + `RandomCutForest` | PyFlink |
-| **Pipeline 4** | Central aggregation using FedAvg | `04_federated_aggregation.py` → `FederatedAggregator` | Kafka + Python |
-| **Pipeline 5** | Ensemble anomaly detection with voting/alarms | `03_flink_local_training.py` + `04_federated_aggregation.py` | RCF Ensemble + Alerts |
+| **Pipeline 3** | Local training + derived update publishing (no raw events to aggregator) | `03_flink_local_training.py` → `SGDModelTrainer` + `RandomCutForest` | PyFlink |
+| **Pipeline 4** | Central aggregation (FedAvg-style weighted metric aggregation) | `04_federated_aggregation.py` → `FederatedAggregator` | Kafka + Python |
+| **Pipeline 5** | Ensemble anomaly detection with averaging/alarms | `03_flink_local_training.py` + `04_federated_aggregation.py` | RCF Ensemble + Alerts |
 
 ---
 
@@ -77,7 +77,7 @@ kafka-broker-1:
 ```
 
 #### Message Format
-Each IoT reading is published as JSON:
+Each IoT reading is published as JSON with a single selected sensor metric per device:
 ```json
 {
   "device_id": "device_127",
@@ -85,6 +85,7 @@ Each IoT reading is published as JSON:
   "timestamp": "2025-11-07T15:22:31.000Z"
 }
 ```
+*Note: The Edge-IIoT dataset contains multiple features; we stream one aggregated sensor value per device for simplicity.*
 
 #### Evidence in Code
 - Real-time streaming at configurable rate (default 10 msg/sec)
@@ -163,11 +164,11 @@ for i, v in enumerate(stats["values"]):
 ```
 
 #### Privacy Preservation
-**Key Design Decision:** All preprocessing happens **locally on each device** within the Flink task. Raw sensor data never leaves the device context:
+**Key Design Decision:** Raw sensor events are not forwarded to the central aggregator. Only aggregated statistics and model updates are published:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    DEVICE BOUNDARY (Privacy Zone)                        │
+│                    LOCAL PROCESSING (Per Device)                         │
 │  ┌───────────────┐    ┌───────────────┐    ┌────────────────────────┐   │
 │  │ Raw Sensor    │ ─▶ │ Data Quality  │ ─▶ │ Z-Score Normalization  │   │
 │  │ Reading       │    │ Check         │    │ + Feature Engineering  │   │
@@ -176,12 +177,13 @@ for i, v in enumerate(stats["values"]):
 │                                                        ▼                │
 │                                            ┌────────────────────────┐   │
 │                                            │ Local Model Training   │   │
-│                                            │ (Never shares raw data)│   │
+│                                            │ (Raw events not sent   │   │
+│                                            │  to central aggregator)│   │
 │                                            └────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────┘
                                                         │
-                              Only MODEL UPDATES leave ─┘
-                              (accuracy, weights, samples)
+                              Only DERIVED OUTPUTS leave ─┘
+                              (metrics, statistics, sample counts)
 ```
 
 #### Preprocessing Summary Table
@@ -192,15 +194,15 @@ for i, v in enumerate(stats["values"]):
 | **Outlier Detection** | 10σ deviation flagging | `_check_data_quality()` |
 | **Stuck Sensor Detection** | 5+ consecutive identical values | `_check_data_quality()` |
 | **Scaling (Normalization)** | Z-score: `(x - μ) / σ` | Rolling mean/std calculation |
-| **Feature Encoding** | 3-feature vector: [mean, std, normalized] | Feature engineering block |
-| **Privacy Preservation** | All processing local to device | Flink task isolation |
+| **Feature Vector Construction** | 3-feature vector: [mean, std, normalized] | Feature engineering block |
+| **Privacy Preservation** | Raw events not forwarded upstream | Flink per-device processing |
 
 ---
 
 ## Pipeline 3: Local Model Training with Federated Updates
 
 ### Requirement
-> *"Train the local deep learning anomaly detection models on each device using federated learning techniques and send model updates (not raw data) to a central server for aggregation."*
+> *"Train local anomaly detection models on each device using online learning techniques and send derived updates/metrics (not raw data) to a central server for aggregation."*
 
 ### Implementation
 
@@ -226,12 +228,12 @@ RCF is specifically designed for **anomaly detection**. It does NOT implement ot
 
 | Algorithm | Problem Solved | Used in RCF? | Why/Why Not |
 |-----------|---------------|--------------|-------------|
-| **CMS** (Count-Min Sketch) | Frequency estimation ("How often did X appear?") | ❌ No | RCF needs anomaly scores, not frequency counts |
-| **FM** (Flajolet-Martin) | Cardinality estimation ("How many distinct items?") | ❌ No | RCF tracks patterns, not distinct counts |
-| **AMS** (Alon-Matias-Szegedy) | Frequency moments (F0, F1, F2) | ❌ No | RCF uses spatial displacement, not moment estimation |
-| **Reservoir Sampling** | Random sampling from stream | ⚠️ Conceptually | FIFO eviction is similar but deterministic |
-| **Sliding Windows** | Bounded memory processing | ✅ Yes | Core technique for bounded tree size |
-| **Ensemble Methods** | Combining multiple models | ✅ Yes | 50 trees vote on anomaly scores |
+| **CMS** (Count-Min Sketch) | Frequency estimation ("How often did X appear?") | No | RCF needs anomaly scores, not frequency counts |
+| **FM** (Flajolet-Martin) | Cardinality estimation ("How many distinct items?") | No | RCF tracks patterns, not distinct counts |
+| **AMS** (Alon-Matias-Szegedy) | Frequency moments (F0, F1, F2) | No | RCF uses spatial displacement, not moment estimation |
+| **Reservoir Sampling** | Random sampling from stream | Partially | FIFO eviction is similar but deterministic |
+| **Sliding Windows** | Bounded memory processing | Yes | Core technique for bounded tree size |
+| **Ensemble Methods** | Combining multiple models | Yes | 50 trees contribute scores; final score is averaged |
 
 ---
 
@@ -322,7 +324,7 @@ def update(self, value: float) -> float:
 
 **Why?** Stream data can only be examined once - must update model incrementally.
 
-#### 4. Ensemble Voting (50-Tree Forest)
+#### 4. Ensemble Averaging (50-Tree Forest)
 
 ```python
 # From 03_flink_local_training.py
@@ -336,7 +338,7 @@ class RandomCutForest:
         self.trees = [RandomCutTree(max_size=tree_size) for _ in range(num_trees)]
 ```
 
-**How Voting Works:**
+**How Averaging Works:**
 ```
 New Data Point
       │
@@ -352,7 +354,7 @@ New Data Point
                           │
                           ▼
               AVERAGE: final_score = 0.25
-              (Tree4's 0.85 is outvoted by majority)
+              (A single high score is diluted by the mean across all trees)
 ```
 
 **Why Ensemble?** Individual trees may be wrong; averaging reduces variance and false positives.
@@ -411,6 +413,55 @@ Normal Point (Low Score):           Anomaly Point (High Score):
    Score: 0.15                        Score: 0.85
 ```
 
+#### 6. Concept Drift Handling (Automatic Adaptation)
+
+**What is Concept Drift?**
+In streaming data, the underlying data distribution can change over time. For example:
+- A sensor's "normal" temperature range shifts seasonally
+- Network traffic patterns differ between weekdays and weekends
+- Manufacturing equipment behavior changes as components wear
+
+Traditional batch models fail when drift occurs because they were trained on outdated data.
+
+**How RCF Handles Concept Drift:**
+
+```python
+# From 03_flink_local_training.py - RandomCutTree class
+def insert(self, point: np.ndarray) -> None:
+    self.points.append(point.copy())
+    
+    # FIFO EVICTION: Old points automatically "fall out"
+    if len(self.points) > self.max_size:  # max_size = 256
+        self.points.pop(0)                 # Remove oldest point
+        self._rebuild_bounding_box()       # Model now reflects recent data only
+```
+
+**Drift Adaptation Mechanism:**
+```
+Time ────────────────────────────────────────────────────────────────▶
+
+Original Distribution:        Distribution Shift:          Adapted Model:
+   ┌─────────────┐               ┌─────────────┐              ┌─────────────┐
+   │ ••••••••   │               │    ▲▲▲▲▲   │              │     ▲▲▲▲▲  │
+   │  •••••••   │    DRIFT      │   ▲▲▲▲▲▲   │   ~256       │    ▲▲▲▲▲▲  │
+   │   ••••     │   ────▶       │  ▲▲▲▲▲     │   samples    │   ▲▲▲▲▲    │
+   └─────────────┘               └─────────────┘   later      └─────────────┘
+   (Old normal)                  (New normal)                 (Model adapted)
+```
+
+**Why This Works:**
+| Mechanism | How It Handles Drift |
+|-----------|---------------------|
+| **Sliding Window (256 points)** | Old data evicted; model always reflects recent ~256 samples |
+| **FIFO Eviction** | No need to detect drift explicitly — outdated patterns naturally forgotten |
+| **Adaptive Thresholds** | Per-device thresholds adjust based on recent anomaly rates |
+| **No Retraining** | Model continuously updates with each new point |
+
+**Adaptation Speed:**
+- Each tree holds 256 points maximum
+- At 10 msg/sec, full adaptation takes ~26 seconds per device
+- Gradual drift is absorbed smoothly; sudden shifts trigger temporary anomalies (correct behavior)
+
 ---
 
 ### RCF Configuration in This Project
@@ -436,16 +487,50 @@ MAX_THRESHOLD = 0.8         # Never too conservative
 
 ---
 
-### Academic References for RCF
+### Academic References
 
-1. **Original RCF Paper:**
-   > Guha, S., Mishra, N., Roy, G., & Schrijvers, O. (2016). *Robust Random Cut Forest Based Anomaly Detection on Streams.* ICML 2016.
+#### Random Cut Forest (RCF)
 
-2. **AWS Documentation:**
-   > Amazon Kinesis Analytics - Random Cut Forest algorithm for real-time anomaly detection.
+1. **Original RCF Paper (ICML 2016):**
+   > Guha, S., Mishra, N., Roy, G., & Schrijvers, O. (2016). *Robust Random Cut Forest Based Anomaly Detection on Streams.* International Conference on Machine Learning (ICML).
+   > 
+   > **Link:** https://proceedings.mlr.press/v48/guha16.pdf
 
-3. **Streaming Algorithm Foundations:**
-   > Muthukrishnan, S. (2005). *Data Streams: Algorithms and Applications.* Now Publishers.
+2. **AWS Implementation:**
+   > Amazon Web Services. *Random Cut Forest Algorithm Documentation.*
+   > 
+   > **Link:** https://docs.aws.amazon.com/sagemaker/latest/dg/randomcutforest.html
+
+#### Federated Learning
+
+3. **FedAvg - Original Federated Averaging Paper:**
+   > McMahan, H. B., Moore, E., Ramage, D., Hampson, S., & y Arcas, B. A. (2017). *Communication-Efficient Learning of Deep Networks from Decentralized Data.* AISTATS.
+   > 
+   > **Link:** https://arxiv.org/abs/1602.05629
+
+4. **Differential Privacy in Federated Learning:**
+   > Abadi, M., Chu, A., Goodfellow, I., et al. (2016). *Deep Learning with Differential Privacy.* ACM CCS.
+   > 
+   > **Link:** https://arxiv.org/abs/1607.00133
+
+#### Stream Mining Foundations
+
+5. **Data Streams - Algorithms and Applications:**
+   > Muthukrishnan, S. (2005). *Data Streams: Algorithms and Applications.* Foundations and Trends in Theoretical Computer Science.
+   > 
+   > **Link:** https://www.cs.rutgers.edu/~muthu/stream-1-1.ps
+
+6. **Sliding Window Algorithms:**
+   > Datar, M., Gionis, A., Indyk, P., & Motwani, R. (2002). *Maintaining Stream Statistics over Sliding Windows.* SIAM Journal on Computing.
+   > 
+   > **Link:** https://cs.stanford.edu/~rajeev/papers/sliding.pdf
+
+#### Edge-IIoT Dataset
+
+7. **Edge-IIoT Dataset:**
+   > Ferrag, M. A., et al. (2022). *Edge-IIoTset: A New Comprehensive Realistic Cyber Security Dataset of IoT and IIoT Applications.*
+   > 
+   > **Link:** https://www.kaggle.com/datasets/mohamedamineferrag/edgeiiotset-cyber-security-dataset-of-iot-iiot
 
 ---
 
@@ -473,12 +558,18 @@ class RandomCutForest:
 
 ```python
 class SGDModelTrainer:
-    """Stochastic Gradient Descent trainer for local models"""
+    """
+    Auxiliary local classifier using Stochastic Gradient Descent.
+    
+    Purpose: Score calibration and threshold learning, NOT the primary anomaly detector.
+    The main anomaly detection is performed by RCF; this SGD classifier learns
+    to calibrate thresholds based on local device patterns.
+    """
 
     def __init__(self, device_id: str, learning_rate: float = 0.001):
         self.device_id = device_id
         self.learning_rate = learning_rate
-        # Neural network weights (simple logistic regression)
+        # Simple logistic regression on 3 engineered features
         self.weights = np.random.normal(0, 0.01, 3)  # 3 features
         self.bias = 0.0
 
@@ -542,7 +633,7 @@ results["models"].append(json.dumps(model_update))
 │                   ┌───────────────▼───────────────┐                        │
 │                   │    local-model-updates        │                        │
 │                   │       (Kafka Topic)           │                        │
-│                   │  Contains: accuracy, weights, │                        │
+│                   │  Contains: accuracy, loss,    │                        │
 │                   │  samples_count (NOT raw data) │                        │
 │                   └───────────────────────────────┘                        │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -556,7 +647,7 @@ MODEL_TRAINING_INTERVAL_SECONDS = 45  # OR every 45 seconds
 
 ---
 
-## Pipeline 4: Central Aggregation Using Federated Averaging
+## Pipeline 4: Central Aggregation Using FedAvg-Style Weighted Metric Aggregation
 
 ### Requirement
 > *"Aggregate the model updates on a central server, using Federated Averaging or another federated aggregation technique, to improve the global model."*
@@ -565,19 +656,21 @@ MODEL_TRAINING_INTERVAL_SECONDS = 45  # OR every 45 seconds
 
 **File:** `scripts/04_federated_aggregation.py`
 
-#### FedAvg Algorithm (Lines 1350-1450)
+#### Weighted Metric Aggregation (Lines 1350-1450)
 
 ```python
 def federated_average(self, device_accuracies: List[Dict[str, Any]]) -> float:
     """
-    Federated Averaging (FedAvg) algorithm implementation.
+    Weighted metric aggregation inspired by FedAvg.
     
-    Weighted average based on sample counts:
+    Aggregates local accuracy metrics weighted by sample counts:
     global_accuracy = Σ(n_k * accuracy_k) / Σ(n_k)
     
     Where:
     - n_k = number of samples from device k
-    - accuracy_k = local accuracy from device k
+    - accuracy_k = local accuracy metric from device k
+    
+    Note: This aggregates performance metrics, not model parameters.
     """
     if not device_accuracies:
         return self.global_model.accuracy
@@ -683,9 +776,9 @@ class DifferentialPrivacy:
 │          ┌───────────────────────┼───────────────────────┐                  │
 │          ▼                       ▼                       ▼                  │
 │  ┌───────────────┐      ┌───────────────┐      ┌───────────────┐           │
-│  │ Differential  │      │    Device     │      │     FedAvg    │           │
-│  │   Privacy     │  ──▶ │   Clustering  │  ──▶ │   Algorithm   │           │
-│  │  (ε=1.0)      │      │ (non-IID fix) │      │(weighted avg) │           │
+│  │ Differential  │      │    Device     │      │    Weighted   │           │
+│  │   Privacy     │  ──▶ │   Clustering  │  ──▶ │  Aggregation  │           │
+│  │  (ε=1.0)      │      │ (non-IID fix) │      │ (FedAvg-style)│           │
 │  └───────────────┘      └───────────────┘      └───────────────┘           │
 │                                                        │                    │
 │                                  ┌─────────────────────┘                    │
@@ -723,10 +816,10 @@ class ModelRegistry:
 
 ---
 
-## Pipeline 5: Ensemble Anomaly Detection with Voting and Alarms
+## Pipeline 5: Ensemble Anomaly Detection with Averaging and Alarms
 
 ### Requirement
-> *"Use ensemble methods for anomaly detection by combining results from different federated models, apply voting-based techniques for consensus, and trigger alarms when anomalies are detected."*
+> *"Use ensemble methods for anomaly detection by combining results from different federated models, apply ensemble consensus (averaging) and adaptive thresholding, and trigger alarms when anomalies are detected."*
 
 ### Implementation
 
@@ -736,26 +829,26 @@ class ModelRegistry:
 
 ```python
 class RandomCutForest:
-    """ENSEMBLE of 50 Random Cut Trees for robust anomaly detection"""
+    """ENSEMBLE of 50 Random Cut Trees for anomaly detection"""
     
     def __init__(self, num_trees: int = 50, ...):  # 50-TREE ENSEMBLE
         self.trees = [RandomCutTree(...) for _ in range(num_trees)]
     
     def update(self, value: float) -> float:
         """
-        VOTING: Average anomaly score across all 50 trees.
-        This is a form of ensemble voting for consensus.
+        ENSEMBLE AVERAGING: Compute mean anomaly score across all 50 trees.
+        Each tree provides its score; the final score is their average.
         """
         scores = []
         for tree in self.trees:
-            # Each tree "votes" with its anomaly score
+            # Each tree computes its anomaly score
             disp = tree.displacement(shingle)
             codisp = tree.collusive_displacement(shingle)
             score = 0.3 * disp + 0.7 * codisp  # Weighted combination
             scores.append(score)
             tree.insert(shingle)
         
-        # CONSENSUS: Average across all trees (ensemble voting)
+        # CONSENSUS: Average across all trees (ensemble averaging)
         raw_score = np.mean(scores)
         
         # Normalize to 0-1 range
@@ -775,11 +868,11 @@ if is_anomaly:
     # SEVERITY CLASSIFICATION for alarm triggering
     score_margin = anomaly_score - threshold
     if score_margin > 0.3 or anomaly_score > 0.8:
-        severity = "critical"   # 🚨 CRITICAL ALARM
+        severity = "critical"   # CRITICAL ALARM
     elif score_margin > 0.15 or anomaly_score > 0.6:
-        severity = "warning"    # ⚠️ WARNING ALARM
+        severity = "warning"    # WARNING ALARM
     else:
-        severity = "info"       # ℹ️ INFO NOTIFICATION
+        severity = "info"       # INFO NOTIFICATION
     
     anomaly = {
         "device_id": device_id,
@@ -796,7 +889,7 @@ if is_anomaly:
     results["anomalies"].append(json.dumps(anomaly))
     
     logger.info(
-        f"🚨 ANOMALY [{severity.upper()}] device={device_id} "
+        f"ANOMALY [{severity.upper()}] device={device_id} "
         f"value={value:.2f} score={anomaly_score:.3f} threshold={threshold:.3f}"
     )
 ```
@@ -846,13 +939,13 @@ class PerformanceMonitor:
             self.producer.send("system-alerts", value=alert.to_dict())
 ```
 
-#### Adaptive Threshold Voting (Lines 400-555)
+#### Adaptive Threshold Management (Lines 400-555)
 
 ```python
 class AdaptiveThresholdManager:
     """
-    Adaptive thresholds per device - a form of VOTING/CONSENSUS
-    where historical performance votes on the appropriate threshold.
+    Adaptive thresholds per device using feedback control.
+    Historical anomaly rates drive threshold adjustments.
     
     - If anomaly rate too high (>7.5%): threshold increases (conservative)
     - If anomaly rate too low (<2.5%): threshold decreases (sensitive)
@@ -860,12 +953,12 @@ class AdaptiveThresholdManager:
     """
     
     def _adapt_threshold(self, device_id: str) -> None:
-        """Adapt threshold based on VOTING from recent samples"""
-        # Count "votes" from recent anomaly detections
+        """Adapt threshold based on feedback from recent samples"""
+        # Count anomalies in recent window
         anomalies_in_window = sum(1 for s in scores if s > current_threshold)
         current_rate = anomalies_in_window / len(scores)
         
-        # Threshold VOTE: adjust based on historical consensus
+        # Feedback adjustment: tune threshold based on observed rate
         if current_rate > self.target_rate * 1.5:
             new_threshold += THRESHOLD_ADJUSTMENT_FACTOR  # Too many: raise bar
         elif current_rate < self.target_rate * 0.5:
@@ -886,7 +979,7 @@ class AdaptiveThresholdManager:
 │  │     │       │       │       │              │                        │    │
 │  │     ▼       ▼       ▼       ▼              ▼                        │    │
 │  │  ┌─────────────────────────────────────────────┐                    │    │
-│  │  │           VOTING: Average Scores            │                    │    │
+│  │  │       ENSEMBLE AVERAGING: Mean Scores       │                    │    │
 │  │  │        score = mean(tree_scores)            │                    │    │
 │  │  └───────────────────────┬─────────────────────┘                    │    │
 │  └──────────────────────────┼──────────────────────────────────────────┘    │
@@ -903,9 +996,9 @@ class AdaptiveThresholdManager:
 │  ┌─────────────────────────┐      ┌─────────────────────────┐              │
 │  │   SEVERITY CLASSIFICATION│      │   Continue monitoring   │              │
 │  │   ┌──────────────────┐  │      └─────────────────────────┘              │
-│  │   │ score > 0.8      │──│──▶ 🚨 CRITICAL ALARM                          │
-│  │   │ score > 0.6      │──│──▶ ⚠️ WARNING ALARM                           │
-│  │   │ score > threshold│──│──▶ ℹ️ INFO NOTIFICATION                       │
+│  │   │ score > 0.8      │──│──▶ CRITICAL ALARM                          │
+│  │   │ score > 0.6      │──│──▶ WARNING ALARM                           │
+│  │   │ score > threshold│──│──▶ INFO NOTIFICATION                       │
 │  │   └──────────────────┘  │                                               │
 │  └───────────────┬─────────┘                                               │
 │                  │                                                          │
@@ -943,7 +1036,7 @@ class AdaptiveThresholdManager:
 | Stream Processing | Apache Flink (PyFlink) | Local preprocessing + model training |
 | ML Algorithm | Random Cut Forest | Unsupervised anomaly detection |
 | Local Training | SGD (Logistic Regression) | Per-device model optimization |
-| Aggregation | FedAvg + Differential Privacy | Privacy-preserving model aggregation |
+| Aggregation | FedAvg-style weighted metric aggregation + Differential Privacy | Privacy-preserving aggregation |
 | Batch Analytics | Apache Spark | Historical analysis |
 | Time-Series DB | TimescaleDB | Model + metrics storage |
 | Visualization | Grafana | Real-time dashboards |
@@ -970,14 +1063,26 @@ http://localhost:3000   # Grafana
 
 ---
 
+## Kafka Topics Map
+
+| Topic | Producer | Consumer | Data Flow |
+|-------|----------|----------|-----------|
+| `edge-iiot-stream` | Kafka Producer | Flink Job | Raw sensor readings (device_id, data, timestamp) |
+| `local-model-updates` | Flink Job | Aggregation Server | Derived metrics (accuracy, loss, samples, mean, std) |
+| `global-model-updates` | Aggregation Server | Flink Job | Global model metadata (version, aggregated metrics, threshold config) |
+| `anomalies` | Flink Job | TimescaleDB, Grafana | Detected anomalies with severity |
+| `system-alerts` | Aggregation Server | External Systems | Performance alerts (degradation, stale devices) |
+
+---
+
 ## Conclusion
 
 This project implements all five required stream mining pipelines for federated learning:
 
-1. ✅ **Pipeline 1**: Kafka-based real-time IoT ingestion (10 msg/sec across 2,400 devices)
-2. ✅ **Pipeline 2**: Local preprocessing in Flink (data quality, normalization, feature engineering)
-3. ✅ **Pipeline 3**: Local RCF + SGD training with model updates only (privacy-preserving)
-4. ✅ **Pipeline 4**: FedAvg aggregation with Differential Privacy and Device Clustering
-5. ✅ **Pipeline 5**: 50-tree RCF ensemble with voting, severity-based alarms, and adaptive thresholds
+1. **Pipeline 1**: Kafka-based real-time IoT ingestion (10 msg/sec across 2,400 devices)
+2. **Pipeline 2**: Local preprocessing in Flink (data quality, normalization, feature engineering)
+3. **Pipeline 3**: Local RCF + SGD training with derived outputs only (privacy-preserving)
+4. **Pipeline 4**: FedAvg-style weighted metric aggregation with Differential Privacy and Device Clustering
+5. **Pipeline 5**: 50-tree RCF ensemble with averaging, severity-based alarms, and adaptive thresholds
 
-All processing maintains data privacy by keeping raw sensor data local to devices and only transmitting model updates to the central server.
+**Privacy note:** Raw sensor events are consumed and processed in the Flink job; the central aggregator only receives derived outputs (metrics/statistics and alerts) via Kafka topics, not the raw event stream.
