@@ -564,9 +564,9 @@ MAX_THRESHOLD = 0.8         # Never too conservative
 
 #### Stream Mining Foundations
 
-- **Data Streams - Algorithms and Applications:** Muthukrishnan, S. (2005). *Data Streams: Algorithms and Applications.* Foundations and Trends in Theoretical Computer Science. [Paper](https://www.cs.rutgers.edu/~muthu/stream-1-1.ps)
+- **Data Streams - Algorithms and Applications:** Muthukrishnan, S. (2005). *Data Streams: Algorithms and Applications.* Foundations and Trends in Theoretical Computer Science. [Paper](https://www.nowpublishers.com/article/Details/TCS-002)
 
-- **Sliding Window Algorithms:** Datar, M., Gionis, A., Indyk, P., & Motwani, R. (2002). *Maintaining Stream Statistics over Sliding Windows.* SIAM Journal on Computing. [Paper](https://cs.stanford.edu/~rajeev/papers/sliding.pdf)
+- **Sliding Window Algorithms:** Datar, M., Gionis, A., Indyk, P., & Motwani, R. (2002). *Maintaining Stream Statistics over Sliding Windows.* SIAM Journal on Computing. [Paper](https://doi.org/10.1137/S0097539701398363)
 
 #### Edge-IIoT Dataset
 
